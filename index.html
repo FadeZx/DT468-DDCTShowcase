@@ -6,12 +6,25 @@
   <title>DDCT Portfolio Showcase</title>
   <style>
     :root{
-      --bg:#fdf6f6; --pink:#ff7a9a; --pink-2:#ffb6c1; --pink-3:#ffe6ec; --pink-4:#fff0f5; --txt:#333;
+      /* ColorHunt palette */
+      --bg:#F4E7E1;          /* warm cream */
+      --accent:#FF9B45;      /* orange */
+      --accent-2:#D5451B;    /* red-orange */
+      --deep:#521C0D;        /* deep brown */
+
+      /* UI neutrals */
+      --white:#ffffff;
+      --shadow: 0 4px 12px rgba(0,0,0,.05);
+      --card-shadow: 0 5px 15px rgba(0,0,0,.08);
     }
+
     html { scroll-behavior: smooth; }
     body {
-      margin: 0; font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg); color: var(--txt); line-height: 1.6;
+      margin: 0;
+      font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--deep);
+      line-height: 1.6;
     }
     a { color: inherit; text-decoration: none; }
 
@@ -19,82 +32,98 @@
     nav {
       position: sticky; top: 0; z-index: 1000;
       display:flex; align-items:center; justify-content:space-between;
-      padding: 20px 50px; background:#fff; box-shadow: 0 4px 12px rgba(0,0,0,.05);
+      padding: 20px 50px; background: var(--white); box-shadow: var(--shadow);
     }
-    .logo { font-weight: 800; font-size: 1.6rem; color: var(--pink); letter-spacing:.3px; }
-    .menu a { margin: 0 15px; font-weight: 500; }
-    .menu a:hover { color: var(--pink); }
+    .logo { font-weight: 800; font-size: 1.6rem; color: var(--accent); letter-spacing:.3px; }
     .profile-btn{
-      background: var(--pink-2); color:#fff; padding:8px 20px; border-radius:25px; font-weight:700;
-      box-shadow:0 4px 8px rgba(0,0,0,.1); transition: transform .2s;
+      background: var(--accent-2); color: var(--white); padding:8px 20px; border-radius:25px; font-weight:700;
+      box-shadow: 0 4px 8px rgba(0,0,0,.1); transition: transform .2s, filter .2s;
     }
-    .profile-btn:hover{ transform: scale(1.05); }
+    .profile-btn:hover{ transform: scale(1.05); filter: brightness(1.05); }
 
     /* HERO (full screen + sparkles) */
     .hero{
       position: relative; isolation: isolate;
       height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
-      text-align:center; padding: 0 24px; background: linear-gradient(145deg, var(--pink-3), var(--pink-4));
+      text-align:center; padding: 0 24px;
+      background:
+        radial-gradient(1200px 600px at 15% -10%, rgba(255,155,69,.18), transparent 60%),
+        radial-gradient(900px 600px at 85% 0%, rgba(213,69,27,.12), transparent 60%),
+        linear-gradient(145deg, #F9EFEA, var(--bg));
       overflow: hidden;
     }
-    /* Canvas behind content */
-    .hero-canvas{
-      position:absolute; inset:0; z-index:0; pointer-events:none;
-      opacity:.85; /* soften look */
-    }
+    .hero-canvas{ position:absolute; inset:0; z-index:0; pointer-events:none; opacity:.85; }
     .hero-inner{ position: relative; z-index:1; }
 
     .hero h1{
-      font-size: clamp(2.2rem, 4vw, 3rem); color:#ff4c75; margin: 0 0 14px;
+      font-size: clamp(2.2rem, 4vw, 3rem); color: var(--deep); margin: 0 0 14px;
       opacity: 0; transform: translateY(20px); animation: fadeUp 1s forwards;
     }
     .hero p{
-      color:#666; margin: 0 0 26px; font-size: 1.1rem;
+      color:#76412a; margin: 0 0 26px; font-size: 1.1rem;
       opacity: 0; transform: translateY(20px); animation: fadeUp 1s .45s forwards;
     }
     .btn-primary{
-      background: var(--pink); color:#fff; border:0; cursor:pointer; font-weight:800;
+      background: var(--accent); color: var(--white); border:0; cursor:pointer; font-weight:800;
       padding: 14px 28px; border-radius: 30px;
-      box-shadow: 0 4px 10px rgba(0,0,0,.15);
+      box-shadow: 0 4px 10px rgba(255,155,69,.35);
       opacity: 0; transform: translateY(20px); animation: fadeUp 1s .9s forwards;
       transition: transform .25s, box-shadow .25s, filter .25s;
     }
     .btn-primary:hover{
       transform: scale(1.08);
-      box-shadow: 0 8px 20px rgba(255,122,154,.35);
+      box-shadow: 0 8px 20px rgba(255,155,69,.45);
       filter: brightness(1.05);
     }
     @keyframes fadeUp { to { opacity:1; transform: translateY(0);} }
 
-    /* TAGS (scroll target) */
+    /* TAGS */
     .tags { text-align:center; padding: 30px 50px; scroll-margin-top: 90px; }
     .tag{
-      display:inline-block; background:#fff; padding:10px 18px; margin:6px; border-radius:25px;
-      box-shadow:0 3px 6px rgba(0,0,0,.08); cursor:pointer; user-select:none;
-      transition: background .25s, color .25s, transform .15s;
+      display:inline-block; background: var(--white); padding:10px 18px; margin:6px; border-radius:25px;
+      box-shadow: 0 3px 6px rgba(0,0,0,.08); cursor:pointer; user-select:none;
+      transition: background .25s, color .25s, transform .15s, box-shadow .25s;
+      border: 1px solid rgba(82,28,13,.08);
     }
-    .tag:hover{ background: var(--pink-2); color:#fff; transform: translateY(-2px); }
+    .tag:hover{ background: var(--accent); color: var(--white); transform: translateY(-2px); box-shadow: 0 6px 12px rgba(255,155,69,.25); }
 
     /* GRID (4 per row) */
     .grid{
       display:grid; grid-template-columns: repeat(4, 1fr); gap: 40px; padding: 60px;
     }
     .card{
-      background:#fff; border-radius:20px; overflow:hidden; text-align:center;
-      box-shadow:0 5px 15px rgba(0,0,0,.08); cursor:pointer;
+      background: var(--white); border-radius:20px; overflow:hidden; text-align:center;
+      box-shadow: var(--card-shadow); cursor:pointer;
       transition: transform .3s, box-shadow .3s;
-      opacity:0; transform: translateY(20px); /* will fade in */
+      opacity:0; transform: translateY(20px); /* revealed on scroll */
+      border: 1px solid rgba(82,28,13,.08);
     }
-    .card img{ width:100%; height:150px; object-fit:cover; border-bottom:2px solid var(--pink-3); }
-    .card h3{ margin:0; padding:14px; color:#ff4c75; }
     .card:hover{ transform: translateY(-8px); box-shadow: 0 10px 20px rgba(0,0,0,.15); }
+    .card img{ width:100%; height:150px; object-fit:cover; border-bottom:2px solid rgba(213,69,27,.15); }
+
+    /* Project name hover animation */
+    .card h3{ margin:0; padding:14px; }
+    .project-link{
+      position: relative; display:inline-block; font-weight:800; color: var(--deep);
+      transition: transform .2s, color .2s, letter-spacing .2s;
+    }
+    .project-link::after{
+      content:""; position:absolute; left:0; bottom:-4px; height:3px; width:0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 3px;
+      transition: width .3s ease;
+    }
+    .project-link:hover{
+      color: var(--accent-2); transform: translateY(-2px); letter-spacing:.3px;
+    }
+    .card:hover .project-link::after{ width:100%; }
 
     .revealed{ opacity:1 !important; transform: translateY(0) !important; transition: opacity .6s ease, transform .6s ease; }
 
     /* Footer */
     footer{
-      text-align:center; padding: 40px 20px; background: var(--pink-4); color:#555;
-      border-top:2px solid var(--pink-3); font-size:.95rem;
+      text-align:center; padding: 40px 20px; background: #F9EFEA; color:#7a4a33;
+      border-top:2px solid rgba(82,28,13,.1); font-size:.95rem;
     }
 
     /* Responsive */
@@ -115,9 +144,6 @@
   <!-- NAV -->
   <nav>
     <div class="logo">DDCT Showcase</div>
-    <div class="menu">
-      <a href="#">Home</a><a href="#">Explore</a><a href="#">Tags</a><a href="#">About</a>
-    </div>
     <a class="profile-btn" href="#">Login / Signup</a>
   </nav>
 
@@ -127,7 +153,6 @@
     <div class="hero-inner">
       <h1>✨ Showcase Creativity. Share Projects. Inspire Together. ✨</h1>
       <p>A platform for students, teachers, and admins to create, collaborate, and showcase works.</p>
-      <!-- Scroll to TAGS (stop here) -->
       <button class="btn-primary" onclick="document.getElementById('tags').scrollIntoView({behavior:'smooth'})">
         Explore Projects
       </button>
@@ -140,22 +165,51 @@
     <span class="tag">Games</span>
     <span class="tag">Art</span>
     <span class="tag">Animation</span>
-    <span class="tag">WebGL</span>
-    <span class="tag">2025</span>
+    <span class="tag">Others</span>
   </section>
 
   <!-- PROJECTS GRID -->
   <section class="grid" id="projects" aria-label="Projects">
-    <div class="card"><img src="https://placehold.co/600x300/ffb6c1/ffffff?text=Project+1" alt=""><h3>Project 1</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/ffd1dc/333333?text=Project+2" alt=""><h3>Project 2</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/ffe6ec/333333?text=Project+3" alt=""><h3>Project 3</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/fff0f5/333333?text=Project+4" alt=""><h3>Project 4</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/fdf6f6/333333?text=Project+5" alt=""><h3>Project 5</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/ffb6c1/ffffff?text=Project+6" alt=""><h3>Project 6</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/ffd1dc/333333?text=Project+7" alt=""><h3>Project 7</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/ffe6ec/333333?text=Project+8" alt=""><h3>Project 8</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/fff0f5/333333?text=Project+9" alt=""><h3>Project 9</h3></div>
-    <div class="card"><img src="https://placehold.co/600x300/fdf6f6/333333?text=Project+10" alt=""><h3>Project 10</h3></div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/f1d7c9/521c0d?text=Project+1" alt="">
+      <h3><a class="project-link" href="project-one.html">Project 1</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/ffd6b3/521c0d?text=Project+2" alt="">
+      <h3><a class="project-link" href="#">Project 2</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/ffc38f/521c0d?text=Project+3" alt="">
+      <h3><a class="project-link" href="#">Project 3</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/ffaf6a/521c0d?text=Project+4" alt="">
+      <h3><a class="project-link" href="#">Project 4</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/ffa251/521c0d?text=Project+5" alt="">
+      <h3><a class="project-link" href="#">Project 5</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/ff9b45/521c0d?text=Project+6" alt="">
+      <h3><a class="project-link" href="#">Project 6</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/f07e2b/ffffff?text=Project+7" alt="">
+      <h3><a class="project-link" href="#">Project 7</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/d5451b/ffffff?text=Project+8" alt="">
+      <h3><a class="project-link" href="#">Project 8</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/8f2e17/ffffff?text=Project+9" alt="">
+      <h3><a class="project-link" href="#">Project 9</a></h3>
+    </div>
+    <div class="card">
+      <img src="https://placehold.co/600x300/521c0d/ffffff?text=Project+10" alt="">
+      <h3><a class="project-link" href="#">Project 10</a></h3>
+    </div>
   </section>
 
   <footer>
@@ -163,50 +217,39 @@
   </footer>
 
   <script>
-    // Sparkle Parallax Background (Canvas)
+    // Sparkle Parallax Background (Canvas) – unchanged logic, recolored by page palette
     (function(){
       const canvas = document.getElementById('sparkles');
       if(!canvas) return;
       const ctx = canvas.getContext('2d', { alpha: true });
       let W, H, DPR = Math.min(window.devicePixelRatio || 1, 2);
       let particles = [];
-      const MAX = 90;                // number of sparkles
-      const BASE_SPEED = 0.15;       // gentle drift
+      const MAX = 90, BASE_SPEED = 0.15;
       const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       function resize(){
         const rect = canvas.parentElement.getBoundingClientRect();
         W = Math.floor(rect.width); H = Math.floor(rect.height);
-        canvas.width = Math.floor(W * DPR);
-        canvas.height = Math.floor(H * DPR);
-        canvas.style.width = W + 'px';
-        canvas.style.height = H + 'px';
+        canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
         ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       }
-
       function rand(min, max){ return Math.random() * (max - min) + min; }
-
       function spawn(n = MAX){
         particles.length = 0;
         for(let i=0;i<n;i++){
           particles.push({
-            x: rand(0, W),
-            y: rand(0, H),
-            r: rand(1.2, 2.8),
-            a: rand(0.35, 0.95),          // alpha
-            vx: rand(-BASE_SPEED, BASE_SPEED),
-            vy: rand(-BASE_SPEED, BASE_SPEED),
-            tw: rand(1, 2.5),             // twinkle speed
-            t: rand(0, Math.PI*2),
-            d: rand(0.3, 1.4),            // depth (affects parallax)
+            x: rand(0, W), y: rand(0, H),
+            r: rand(1.2, 2.8), a: rand(0.35, 0.95),
+            vx: rand(-BASE_SPEED, BASE_SPEED), vy: rand(-BASE_SPEED, BASE_SPEED),
+            tw: rand(1, 2.5), t: rand(0, Math.PI*2), d: rand(0.3, 1.4),
           });
         }
       }
-
       let mouseX = 0, mouseY = 0;
       window.addEventListener('mousemove', e=>{
         const rect = canvas.getBoundingClientRect();
-        mouseX = (e.clientX - rect.left)/W - 0.5; // -0.5..0.5
+        mouseX = (e.clientX - rect.left)/W - 0.5;
         mouseY = (e.clientY - rect.top)/H - 0.5;
       }, { passive:true });
 
@@ -214,77 +257,51 @@
       function draw(){
         ctx.clearRect(0,0,W,H);
         for(const p of particles){
-          // gentle drift
           p.x += p.vx * (0.6 + p.d);
           p.y += p.vy * (0.6 + p.d);
-
-          // wrap around
           if(p.x < -10) p.x = W + 10;
           if(p.x > W+10) p.x = -10;
           if(p.y < -10) p.y = H + 10;
           if(p.y > H+10) p.y = -10;
 
-          // twinkle
           p.t += 0.02 * p.tw;
-          const twinkle = 0.5 + Math.sin(p.t)*0.5; // 0..1
+          const twinkle = 0.5 + Math.sin(p.t)*0.5;
           const alpha = p.a * (0.6 + 0.4*twinkle);
 
-          // parallax offset by mouse
           const px = p.x + mouseX * 15 * p.d;
           const py = p.y + mouseY * 15 * p.d;
 
-          // glow circle
           const grad = ctx.createRadialGradient(px, py, 0, px, py, 12 * p.d);
-          grad.addColorStop(0, `rgba(255,182,193,${alpha})`); // lightpink
-          grad.addColorStop(0.6, `rgba(255,122,154,${alpha*0.6})`);
-          grad.addColorStop(1, `rgba(255,122,154,0)`);
+          grad.addColorStop(0, `rgba(255,155,69,${alpha})`);  // accent
+          grad.addColorStop(0.6, `rgba(213,69,27,${alpha*0.6})`);
+          grad.addColorStop(1, `rgba(213,69,27,0)`);
 
           ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(px, py, 12 * p.d, 0, Math.PI*2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(px, py, 12 * p.d, 0, Math.PI*2); ctx.fill();
 
-          // sparkle core
           ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-          ctx.beginPath();
-          ctx.arc(px, py, p.r, 0, Math.PI*2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(px, py, p.r, 0, Math.PI*2); ctx.fill();
         }
         rafId = requestAnimationFrame(draw);
       }
-
-      function start(){
-        resize(); spawn(prefersReduced ? 0 : MAX);
-        if (!prefersReduced) draw();
-      }
-      function stop(){
-        cancelAnimationFrame(rafId);
-      }
-
-      // Resize on viewport/orientation change
+      function start(){ resize(); spawn(prefersReduced ? 0 : MAX); if (!prefersReduced) draw(); }
+      function stop(){ cancelAnimationFrame(rafId); }
       window.addEventListener('resize', ()=>{ resize(); spawn(particles.length || MAX); }, { passive:true });
-
-      // Only animate while the hero is in view
       const hero = canvas.parentElement;
       const io = ('IntersectionObserver' in window)
         ? new IntersectionObserver(entries=>{
-            entries.forEach(e=>{
-              if(e.isIntersecting && !prefersReduced){ start(); }
-              else { stop(); }
-            });
+            entries.forEach(e=>{ if(e.isIntersecting && !prefersReduced){ start(); } else { stop(); } });
           }, { threshold: 0.05 })
         : null;
-
       if(io){ io.observe(hero); } else { start(); }
     })();
 
-    // IntersectionObserver for staggered card fade-in
+    // Card reveal on scroll
     (function(){
       const cards = document.querySelectorAll('.card');
       const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (prefersReduced || !('IntersectionObserver' in window)) {
-        cards.forEach(c => c.classList.add('revealed'));
-        return;
+        cards.forEach(c => c.classList.add('revealed')); return;
       }
       const observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Project One — Horror Game | DDCT Showcase</title>
+<style>
+  :root{
+    /* Site-wide (matches your cute theme) */
+    --bg:#0f0f12;             /* dark for horror page */
+    --panel:#17171b;
+    --panel-2:#1e1e23;
+    --txt:#e9e9ee;
+    --muted:#b9b9c7;
+
+    /* Project accent (owner can customize via panel) */
+    --accent:#ff4c75;         /* pinkish by default to match site, can change */
+    --accent-2:#ff7a9a;
+
+    --chip:#262630;
+    --chip-hover:#303040;
+    --radius:20px;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background: var(--bg); color: var(--txt); line-height:1.6;
+  }
+  a{color:inherit; text-decoration:none}
+
+  /* NAV (simple back link + profile) */
+  nav{
+    position:sticky; top:0; z-index:50; display:flex; align-items:center; justify-content:space-between;
+    padding:16px 28px; background:rgba(15,15,18,.7); backdrop-filter: blur(10px); border-bottom:1px solid #23232b;
+  }
+  .nav-left{display:flex; align-items:center; gap:14px}
+  .logo{font-weight:800; letter-spacing:.3px; color:var(--accent)}
+  .back{font-weight:600; padding:8px 14px; border-radius:999px; background:#1a1a22}
+  .back:hover{background:#222230}
+  .profile{padding:8px 16px; border-radius:999px; background:var(--accent-2); color:#0f0f0f; font-weight:800}
+  .profile:hover{filter:brightness(1.1)}
+
+  /* HERO (customizable banner) */
+  .hero{
+    position:relative; isolation:isolate; overflow:hidden;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(255,76,117,.15), transparent 60%),
+      radial-gradient(900px 600px at 85% 0%, rgba(255,122,154,.10), transparent 60%),
+      linear-gradient(180deg, #121219, #0f0f12);
+    border-bottom:1px solid #23232b;
+  }
+  .hero-inner{
+    display:grid; grid-template-columns: 1.4fr 1fr; gap:28px;
+    padding: 48px min(6vw,64px) 42px; align-items:center;
+  }
+  .cover{
+    border-radius: var(--radius); overflow:hidden; box-shadow: var(--shadow);
+    aspect-ratio: 16/9; background:#0b0b10; position:relative;
+  }
+  .cover img{width:100%; height:100%; object-fit:cover; display:block; opacity:.9}
+  .cover::after{
+    content:"H O R R O R  •  P L A C E H O L D E R";
+    position:absolute; inset:auto 12px 10px auto; color:#fff; font-size:.72rem; letter-spacing:.3rem; opacity:.25;
+  }
+  .meta h1{margin:0 0 10px; font-size:clamp(1.6rem,3.5vw,2.4rem)}
+  .subtitle{color:var(--muted); margin:0 0 16px}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 18px}
+  .chip{
+    display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px;
+    background:var(--chip); color:#d7d7e6; font-weight:600; border:1px solid #2c2c38;
+  }
+  .chip:hover{background:var(--chip-hover)}
+  .cta-row{display:flex; gap:10px; flex-wrap:wrap}
+  .btn{
+    border:0; border-radius:999px; padding:12px 18px; font-weight:800; cursor:pointer;
+    transition: transform .2s, box-shadow .2s, filter .2s;
+  }
+  .btn-primary{background:var(--accent); color:#0f0f10; box-shadow:0 10px 25px rgba(255,76,117,.25)}
+  .btn-primary:hover{transform:translateY(-2px); filter:brightness(1.05)}
+  .btn-ghost{background:#1a1a22; color:#fff; border:1px solid #2d2d39}
+  .btn-ghost:hover{background:#21212c}
+
+  /* Tabs */
+  .tabs{
+    margin: 24px auto; padding: 0 min(6vw,64px);
+  }
+  .tab-list{
+    display:flex; gap:10px; flex-wrap:wrap; padding:8px; background:#12121a; border:1px solid #23232b;
+    border-radius:999px; width:fit-content;
+  }
+  .tab-btn{
+    padding:10px 16px; border-radius:999px; background:transparent; color:#cfd0dd; border:0; font-weight:800; cursor:pointer;
+  }
+  .tab-btn.active{background:var(--panel); color:#fff; border:1px solid #2e2e39}
+  .tab-panels{margin-top:18px}
+  .panel{display:none; background:var(--panel); border:1px solid #262633; border-radius: var(--radius); padding:24px; box-shadow: var(--shadow);}
+  .panel.active{display:block; animation: fade .25s ease}
+  @keyframes fade{from{opacity:.6; transform: translateY(6px)}}
+
+  /* Play panel */
+  .play-wrap{display:grid; grid-template-columns:1.8fr 1fr; gap:18px}
+  .iframe-box{
+    background:#0b0b10; border:1px solid #272734; border-radius:12px; overflow:hidden; position:relative;
+    aspect-ratio: 16/9;
+  }
+  .iframe-box iframe{
+    width:100%; height:100%; border:0; display:block; background:#000;
+  }
+  .play-notes{font-size:.92rem; color:#c8c8d6}
+  .minitext{font-size:.85rem; color:#a9a9b6}
+
+  /* Overview panel */
+  .overview{
+    display:grid; grid-template-columns:1.6fr 1fr; gap:24px;
+  }
+  .box{
+    background:var(--panel-2); border:1px solid #2a2a36; border-radius:12px; padding:18px;
+  }
+  h3{margin:6px 0 12px; font-size:1.05rem; letter-spacing:.3px}
+  .team{display:flex; flex-direction:column; gap:10px}
+  .member{display:flex; align-items:center; gap:10px}
+  .avatar{
+    width:36px; height:36px; border-radius:50%; background:#2b2b37; display:grid; place-items:center; color:#d7d7e6; font-weight:800;
+  }
+  .stat-row{display:flex; gap:10px; flex-wrap:wrap}
+  .stat{padding:10px 12px; background:#1a1a23; border:1px solid #2b2b36; border-radius:10px; font-size:.92rem}
+
+  /* Media panel */
+  .media-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .media-grid .shot{
+    aspect-ratio:16/9; border-radius:12px; overflow:hidden; background:#0b0b10; border:1px solid #272734;
+  }
+  .media-grid img{width:100%; height:100%; object-fit:cover; display:block}
+
+  /* Comments panel */
+  .comment{display:grid; grid-template-columns:42px 1fr; gap:10px; padding:12px 0; border-bottom:1px solid #262633}
+  .comment .avatar{width:42px; height:42px}
+  .comment form{display:grid; gap:10px; margin-top:12px}
+  .inp, textarea{
+    width:100%; padding:12px 14px; border-radius:12px; border:1px solid #2c2c38; background:#14141b; color:#fff;
+  }
+  textarea{min-height:110px; resize:vertical}
+  .submit{justify-self:start}
+
+  /* Owner customization (client-side) */
+  .owner-tools{
+    position:fixed; right:16px; bottom:16px; z-index:40; display:flex; flex-direction:column; gap:8px;
+  }
+  .owner-panel{
+    background:#14141b; border:1px solid #2c2c37; padding:12px; border-radius:14px; display:none; min-width:220px;
+  }
+  .owner-panel label{font-size:.88rem; color:#d5d5e0}
+  .owner-panel input[type="color"], .owner-panel input[type="text"]{width:100%; margin-top:6px; margin-bottom:10px}
+  .owner-toggle{
+    background:var(--accent); color:#0f0f10; border:0; border-radius:999px; padding:10px 14px; font-weight:900; cursor:pointer;
+    box-shadow:0 10px 25px rgba(255,76,117,.25)
+  }
+
+  /* Footer */
+  footer{padding:30px; color:#b6b6c5; text-align:center}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-left">
+    <a class="back" href="index.html">← Back to Explore</a>
+    <span class="logo">DDCT Showcase</span>
+  </div>
+  <a class="profile" href="#">Login / Profile</a>
+</nav>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="cover" id="coverBox">
+        <!-- Placeholder cover: replace src to customize -->
+        <img id="coverImg" src="https://placehold.co/1280x720/0a0a0f/ffffff?text=Horror+Cover" alt="Project One Cover">
+        </div>
+        <div class="meta">
+        <h1>Project One — <span style="color:var(--accent)">Midnight Echoes</span></h1>
+        <p class="subtitle">A short atmospheric <strong>horror</strong> web game you can play right here.</p>
+
+        <div class="chips">
+            <span class="chip">Horror</span>
+            <span class="chip">WebGL</span>
+            <span class="chip">Solo Dev</span>
+            <span class="chip">2025</span>
+            <span class="chip">Prototype</span>
+        </div>
+
+            <div class="cta-row">
+                <a class="btn btn-primary" href="#tab-play" onclick="openPlayTab()">▶ Play on Website</a>
+                <button class="btn btn-ghost" onclick="likeProject()">❤️ Like</button>
+                <button class="btn btn-ghost" onclick="shareProject()">🔗 Share</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="tabs" id="tabs">
+  <div class="tab-list" role="tablist" aria-label="Project sections">
+    <button class="tab-btn active" data-tab="tab-overview" role="tab" aria-selected="true">Overview</button>
+    <button class="tab-btn" data-tab="tab-play" role="tab">Play</button>
+    <button class="tab-btn" data-tab="tab-media" role="tab">Media</button>
+    <button class="tab-btn" data-tab="tab-comments" role="tab">Comments</button>
+  </div>
+
+  <div class="tab-panels">
+    <!-- OVERVIEW -->
+    <div class="panel active" id="tab-overview" role="tabpanel">
+      <div class="overview">
+        <div class="box">
+          <h3>About this project</h3>
+          <p>
+            <em>Midnight Echoes</em> is a compact horror experience built for the web. Wander through
+            a dimly lit facility, listen for audio clues, and avoid what lurks in the dark.
+            This page uses placeholders — swap content anytime.
+          </p>
+          <div class="stat-row" style="margin-top:10px">
+            <div class="stat">Engine: Unity (WebGL)</div>
+            <div class="stat">Playtime: ~10 min</div>
+            <div class="stat">Status: Prototype</div>
+            <div class="stat">Updated: 02 Sep 2025</div>
+          </div>
+
+          <h3 style="margin-top:16px">Controls</h3>
+          <ul style="margin:8px 0 0 18px; color:#d8d8e4">
+            <li><b>WASD</b> – Move</li>
+            <li><b>Mouse</b> – Look</li>
+            <li><b>F</b> – Flashlight</li>
+            <li><b>Esc</b> – Pause</li>
+          </ul>
+        </div>
+
+        <div class="box">
+          <h3>Team</h3>
+          <div class="team">
+            <div class="member"><div class="avatar">CP</div><div><b>Christina Park</b><br><span class="minitext">Game Designer, Audio</span></div></div>
+            <div class="member"><div class="avatar">AB</div><div><b>Alisha Bently</b><br><span class="minitext">Progammer</span></div></div>
+            <div class="member"><div class="avatar">JK</div><div><b>Jimin Kim</b><br><span class="minitext">Animation & Visual Effects</span></div></div>
+          </div>
+
+          <h3 style="margin-top:16px">Links</h3>
+          <p class="minitext">• <a href="#">Devlog (placeholder)</a><br>• <a href="#">Source/Repo (placeholder)</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAY -->
+    <div class="panel" id="tab-play" role="tabpanel">
+      <div class="play-wrap">
+        <div>
+          <div class="iframe-box">
+            <!-- Replace src with your build path, e.g. builds/midnight-echoes/index.html -->
+            <iframe
+              title="Play Midnight Echoes (WebGL placeholder)"
+              srcdoc="<!DOCTYPE html><html><head><meta charset='utf-8'><style>
+                  body{margin:0;display:grid;place-items:center;height:100vh;background:#000;color:#fff;font-family:sans-serif}
+                  .box{max-width:720px;text-align:center;padding:16px}
+                  a{color:#ff4c75}
+                </style></head><body>
+                  <div class='box'>
+                    <h2>WebGL Game Placeholder</h2>
+                    <p>Drop your <b>WebGL build</b> here by setting the <b>iframe src</b>.<br>
+                       For Unity: build WebGL → upload folder → set <b>src='build/index.html'</b>.</p>
+                    <p>Example: <code>&lt;iframe src='builds/midnight/index.html'&gt;</code></p>
+                  </div>
+                </body></html>">
+            </iframe>
+          </div>
+          <p class="play-notes" style="margin-top:10px">
+            Tip: Click inside the game to lock mouse. Use <b>F</b> for flashlight (if enabled).
+          </p>
+        </div>
+
+        <div class="box">
+          <h3>System & Notes</h3>
+          <ul style="margin:8px 0 0 18px; color:#d8d8e4">
+            <li>Runs best in Chrome/Edge/Firefox (desktop).</li>
+            <li>If audio seems quiet, check browser auto-play permissions.</li>
+            <li>Mobile: prototype controls are limited.</li>
+          </ul>
+          <div style="margin-top:12px">
+            <a class="btn btn-ghost" href="#" onclick="alert('Placeholder: Download build link');return false;">⬇ Download (placeholder)</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEDIA -->
+    <div class="panel" id="tab-media" role="tabpanel">
+      <div class="media-grid">
+        <div class="shot"><img src="https://placehold.co/800x450/0a0a0f/ffffff?text=Screenshot+1" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/13131a/ffffff?text=Screenshot+2" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/17171f/ffffff?text=Screenshot+3" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/1b1b22/ffffff?text=Screenshot+4" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/0a0a0f/ffffff?text=Gif+Loop" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/13131a/ffffff?text=Title+Card" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/17171f/ffffff?text=Enemy+Tease" alt=""></div>
+        <div class="shot"><img src="https://placehold.co/800x450/1b1b22/ffffff?text=Environment" alt=""></div>
+      </div>
+    </div>
+
+    <!-- COMMENTS -->
+    <div class="panel" id="tab-comments" role="tabpanel">
+      <div class="comment">
+        <div class="avatar">A</div>
+        <div>
+          <b>Anonymous</b><br><span class="minitext">“Spooky vibes! Love the ambience.”</span>
+        </div>
+      </div>
+
+      <form onsubmit="alert('Placeholder: submit comment'); return false;">
+        <label class="minitext">Your name</label>
+        <input class="inp" placeholder="Name (optional)">
+
+        <label class="minitext">Your comment</label>
+        <textarea placeholder="Share your thoughts..."></textarea>
+
+        <button class="btn btn-primary submit">Post Comment</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- OWNER CUSTOMIZATION (client-side only) -->
+<!--div class="owner-tools" title="Owner customization (demo)">
+  <button class="owner-toggle" onclick="toggleOwner()">Customize</button>
+  <div class="owner-panel" id="ownerPanel">
+    <label>Accent Color</label>
+    <input type="color" id="accentPicker" value="#ff4c75">
+
+    <label>Cover Image URL</label>
+    <input type="text" id="coverUrl" placeholder="https://your-image.jpg" />
+
+    <button class="btn btn-primary" onclick="applyOwner()">Apply</button>
+  </div>
+</div-->
+
+<footer>© 2025 DDCT Portfolio Showcase • Digital Design & Creative Technology (KMUTT)</footer>
+
+<script>
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      // Focus target for accessibility
+      document.getElementById(btn.dataset.tab).setAttribute('tabindex','-1');
+      document.getElementById(btn.dataset.tab).focus({preventScroll:true});
+    });
+  });
+
+  // Owner customization demo (client-side)
+  function toggleOwner(){
+    const p = document.getElementById('ownerPanel');
+    p.style.display = (p.style.display==='block') ? 'none' : 'block';
+  }
+  function applyOwner(){
+    const color = document.getElementById('accentPicker').value || '#ff4c75';
+    document.documentElement.style.setProperty('--accent', color);
+    // slightly adjust accent-2 for buttons (simple brighten)
+    document.documentElement.style.setProperty('--accent-2', color);
+
+    const url = document.getElementById('coverUrl').value.trim();
+    if(url){
+      const img = document.getElementById('coverImg');
+      img.src = url;
+    }
+    alert('Applied! (Client-side demo)');
+  }
+
+   function likeProject() {
+    alert("You liked this project! (placeholder)");
+    // Later: send like to server
+  }
+
+    function shareProject() 
+    {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => 
+        {
+            alert("Project link copied to clipboard!");
+        }).catch(() => 
+        {
+            alert("Could not copy link. Here it is:\n" + url);
+        });
+    }
+
+    function openPlayTab() 
+    {
+    // deactivate all tabs and panels
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+
+    // activate Play tab + panel
+    const playBtn = document.querySelector('.tab-btn[data-tab="tab-play"]');
+    const playPanel = document.getElementById('tab-play');
+    if (playBtn) playBtn.classList.add('active');
+    if (playPanel) playPanel.classList.add('active');
+    }
+</script>
+
+</body>
+</html>
