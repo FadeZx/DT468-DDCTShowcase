@@ -1,0 +1,40 @@
+import Hero from './components/Hero';
+import Tags from './components/Tags';
+import ProjectCard from './components/ProjectCard';
+
+const demoProjects = [
+  { title: 'Project 1', image: 'https://placehold.co/600x300/f1d7c9/521c0d?text=Project+1' },
+  { title: 'Project 2', image: 'https://placehold.co/600x300/ffd6b3/521c0d?text=Project+2' },
+  { title: 'Project 3', image: 'https://placehold.co/600x300/ffc38f/521c0d?text=Project+3' },
+  { title: 'Project 4', image: 'https://placehold.co/600x300/ffaf6a/521c0d?text=Project+4' },
+  { title: 'Project 5', image: 'https://placehold.co/600x300/ffa251/521c0d?text=Project+5' },
+  { title: 'Project 6', image: 'https://placehold.co/600x300/ff9b45/521c0d?text=Project+6' },
+  { title: 'Project 7', image: 'https://placehold.co/600x300/f07e2b/ffffff?text=Project+7' },
+  { title: 'Project 8', image: 'https://placehold.co/600x300/d5451b/ffffff?text=Project+8' },
+  { title: 'Project 9', image: 'https://placehold.co/600x300/8f2e17/ffffff?text=Project+9' },
+  { title: 'Project 10', image: 'https://placehold.co/600x300/521c0d/ffffff?text=Project+10'},
+];
+
+export default function Page() {
+  return (
+    <main>
+      <nav>
+        <div className="logo">DDCT Showcase</div>
+        <a className="profile-btn" href="#">Login / Signup</a>
+      </nav>
+
+      <Hero />
+      <Tags />
+
+      <section className="grid" id="projects" aria-label="Projects">
+        {demoProjects.map((p) => (
+          <ProjectCard key={p.title} title={p.title} image={p.image} href="#" />
+        ))}
+      </section>
+
+      <footer>
+        © 2025 DDCT Portfolio Showcase | Digital Design & Creative Technology (KMUTT)
+      </footer>
+    </main>
+  );
+}
