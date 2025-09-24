@@ -22,6 +22,11 @@ export default function Page() {
         <div className="logo">DDCT Showcase</div>
         <a className="profile-btn" href="#">Login / Signup</a>
       </nav>
+      <nav>
+  <div className="logo">DDCT Showcase</div>
+  <a className="profile-btn" href="/profile">Profile</a>
+</nav>
+
 
       <Hero />
       <Tags />
