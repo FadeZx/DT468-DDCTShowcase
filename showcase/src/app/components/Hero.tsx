@@ -1,138 +1,135 @@
-'use client';
-import { useEffect, useRef } from 'react';
+"use client";
+import { useEffect } from "react";
 
 export default function Hero() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
-
   useEffect(() => {
-    // init once
-    const init = () => {
-      const cEl = canvasRef.current;
-      if (!cEl) return;
-      const ctx = cEl.getContext('2d', { alpha: true });
-      if (!ctx) return;
-      ctxRef.current = ctx;
+    const canvasEl = document.getElementById("hero-canvas") as HTMLCanvasElement | null;
+    if (!canvasEl) return;
+    const c = canvasEl;                  // 👈 alias, TS knows it's not null
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+
+    // resize canvas
+    const resize = () => {
+      c.width = window.innerWidth;
+      c.height = window.innerHeight;
     };
-    init();
+    resize();
+    window.addEventListener("resize", resize);
 
-    let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
-    let particles: Array<{x:number;y:number;r:number;a:number;vx:number;vy:number;tw:number;t:number;d:number}> = [];
+    // particle type
+    type Particle = {
+      x: number;
+      y: number;
+      d: number;            // size factor (1..3)
+      symbolIndex: number;  // 0..3  (+ - × ÷)
+      vx: number;           // velocity x
+      vy: number;           // velocity y
+      a: number;            // rotation angle
+      av: number;           // angular velocity
+      phase: number;        // for bobbing
+    };
 
-    const MAX = 90, BASE_SPEED = 0.15;
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const rand = (min: number, max: number) => Math.random() * (max - min) + min;
+
+    // create particles
+    const particles: Particle[] = [];
+    const COUNT = 110;
+    for (let i = 0; i < COUNT; i++) {
+      const d = rand(1, 3);
+      const speed = rand(0.1, 0.35) / d;
+      const dir = Math.random() * Math.PI * 2;
+      particles.push({
+        x: Math.random() * c.width,
+        y: Math.random() * c.height,
+        d,
+        symbolIndex: Math.floor(Math.random() * 4),
+        vx: Math.cos(dir) * speed,
+        vy: Math.sin(dir) * speed,
+        a: Math.random() * Math.PI * 2,
+        av: rand(-0.01, 0.01),
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    // mouse parallax influence
     let mouseX = 0, mouseY = 0;
-    let rafId = 0;
-
-    function resize() {
-      const cEl = canvasRef.current;
-      const ctx = ctxRef.current;
-      if (!cEl || !ctx) return;
-
-      const parent = cEl.parentElement;
-      if (!parent) return;
-
-      const rect = parent.getBoundingClientRect();
-      W = Math.floor(rect.width); H = Math.floor(rect.height);
-      cEl.width = Math.floor(W * DPR); cEl.height = Math.floor(H * DPR);
-      cEl.style.width = W + 'px'; cEl.style.height = H + 'px';
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    }
-
-    function rand(min:number, max:number){ return Math.random() * (max - min) + min; }
-
-    function spawn(n = MAX) {
-      particles.length = 0;
-      for (let i = 0; i < n; i++) {
-        particles.push({
-          x: rand(0, W), y: rand(0, H),
-          r: rand(1.2, 2.8), a: rand(0.35, 0.95),
-          vx: rand(-BASE_SPEED, BASE_SPEED), vy: rand(-BASE_SPEED, BASE_SPEED),
-          tw: rand(1, 2.5), t: rand(0, Math.PI * 2), d: rand(0.3, 1.4),
-        });
-      }
-    }
-
-    function draw() {
-      const ctx = ctxRef.current;
-      if (!ctx) return;
-
-      ctx.clearRect(0, 0, W, H);
-      for (const p of particles) {
-        p.x += p.vx * (0.6 + p.d);
-        p.y += p.vy * (0.6 + p.d);
-        if (p.x < -10) p.x = W + 10;
-        if (p.x > W + 10) p.x = -10;
-        if (p.y < -10) p.y = H + 10;
-        if (p.y > H + 10) p.y = -10;
-
-        p.t += 0.02 * p.tw;
-        const twinkle = 0.5 + Math.sin(p.t) * 0.5;
-        const alpha = p.a * (0.6 + 0.4 * twinkle);
-
-        const px = p.x + mouseX * 15 * p.d;
-        const py = p.y + mouseY * 15 * p.d;
-
-        const grad = ctx.createRadialGradient(px, py, 0, px, py, 12 * p.d);
-        grad.addColorStop(0, `rgba(255,155,69,${alpha})`);
-        grad.addColorStop(0.6, `rgba(213,69,27,${alpha*0.6})`);
-        grad.addColorStop(1, `rgba(213,69,27,0)`);
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(px, py, 12 * p.d, 0, Math.PI * 2); ctx.fill();
-
-        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
-        ctx.beginPath(); ctx.arc(px, py, p.r, 0, Math.PI * 2); ctx.fill();
-      }
-      rafId = requestAnimationFrame(draw);
-    }
-
-    function start(){ resize(); spawn(prefersReduced ? 0 : MAX); if (!prefersReduced) draw(); }
-    function stop(){ cancelAnimationFrame(rafId); }
-
-    const onMove = (e: MouseEvent) => {
-      const cEl = canvasRef.current;
-      if (!cEl) return;
-      const rect = cEl.getBoundingClientRect();
-      mouseX = (e.clientX - rect.left)/W - 0.5;
-      mouseY = (e.clientY - rect.top)/H - 0.5;
+    const onMouse = (e: MouseEvent) => {
+      mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
     };
+    window.addEventListener("mousemove", onMouse);
 
-    window.addEventListener('mousemove', onMove, { passive: true });
-    window.addEventListener('resize', () => { resize(); spawn(particles.length || MAX); }, { passive: true });
+    const symbols = ["+", "-", "×", "÷"];
 
-    const hero = canvasRef.current?.parentElement;
-    let io: IntersectionObserver | null = null;
-    if (hero && 'IntersectionObserver' in window) {
-      io = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && !prefersReduced) start();
-          else stop();
-        });
-      }, { threshold: 0.05 });
-      io.observe(hero);
-    } else {
-      start();
+    // get CSS variables dynamically
+    const rootStyle = getComputedStyle(document.documentElement);
+    const palette = [
+      rootStyle.getPropertyValue("--red").trim(),
+      rootStyle.getPropertyValue("--deepblue").trim(),
+      rootStyle.getPropertyValue("--yellow").trim(),
+      rootStyle.getPropertyValue("--teal").trim(),
+    ];
+
+    // draw loop
+    function draw(t: number) {
+       if (!ctx) return; // TS now knows ctx isn’t null
+
+      ctx.clearRect(0, 0, c.width, c.height);
+
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.a += p.av;
+
+        const bob = Math.sin(t * 0.002 + p.phase) * 0.3;
+
+        // edge wrap
+        const margin = 24;
+        if (p.x < -margin) p.x = c.width + margin;
+        if (p.x > c.width + margin) p.x = -margin;
+        if (p.y < -margin) p.y = c.height + margin;
+        if (p.y > c.height + margin) p.y = -margin;
+
+        const px = p.x + mouseX * 20 * (p.d * 0.5);
+        const py = p.y + mouseY * 20 * (p.d * 0.5) + bob;
+
+        if (!isFinite(px) || !isFinite(py)) continue;
+
+        const symbol = symbols[p.symbolIndex];
+        const color = palette[p.symbolIndex % palette.length] || "#fff";
+
+        const baseSize = 16 * p.d;
+        const pulse = 1 + Math.sin(t * 0.003 + p.phase) * 0.06;
+        const fontPx = Math.max(10, baseSize * pulse);
+
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(p.a);
+        ctx.font = `${fontPx}px Poppins, system-ui, sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(symbol, 0, 0);
+        ctx.restore();
+      }
+
+      requestAnimationFrame(draw);
     }
+    requestAnimationFrame(draw);
 
     return () => {
-      stop();
-      window.removeEventListener('mousemove', onMove);
-      if (io) io.disconnect();
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("mousemove", onMouse);
     };
   }, []);
 
   return (
-    <section className="hero" aria-label="Intro">
-      <canvas ref={canvasRef} className="hero-canvas" />
+    <section className="hero">
+      <canvas id="hero-canvas" className="hero-canvas"></canvas>
       <div className="hero-inner">
-        <h1>✨ Showcase Creativity. Share Projects. Inspire Together. ✨</h1>
-        <p>A platform for students, teachers, and admins to create, collaborate, and showcase works.</p>
-        <button
-          className="btn-primary"
-          onClick={() => document.getElementById('tags')?.scrollIntoView({ behavior: 'smooth' })}
-        >
-          Explore Projects
-        </button>
+        <h1>DDCT Showcase</h1>
+        <p>Digital Design & Creative Technology</p>
       </div>
     </section>
   );

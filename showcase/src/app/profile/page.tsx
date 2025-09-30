@@ -1,3 +1,5 @@
+import './profile.css';
+
 import ProfileHeader from './components/ProfileHeader';
 import EditProfileForm from './components/EditProfileForm';
 import ProjectGrid from './components/ProjectGrid';
