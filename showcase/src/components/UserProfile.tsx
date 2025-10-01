@@ -10,7 +10,7 @@ import { Label } from './ui/label';
 import { ProjectCard } from './ProjectCard';
 import { 
   Edit, Download, Mail, Github, Linkedin, ExternalLink,
-  Calendar, MapPin, Users, Award, BookOpen 
+  Calendar, MapPin, Users, Award, BookOpen, Settings, UserPlus, Shield
 } from 'lucide-react';
 
 interface UserProfileProps {
@@ -19,9 +19,10 @@ interface UserProfileProps {
   isOwnProfile: boolean;
   currentUser: any;
   onProjectClick: (projectId: string) => void;
+  onNavigate?: (page: string) => void;
 }
 
-export function UserProfile({ user, projects, isOwnProfile, currentUser, onProjectClick }: UserProfileProps) {
+export function UserProfile({ user, projects, isOwnProfile, currentUser, onProjectClick, onNavigate }: UserProfileProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
 
@@ -103,6 +104,29 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                         <Download className="mr-2 h-4 w-4" />
                         Export Resume PDF
                       </Button>
+                    )}
+
+                    {isOwnProfile && currentUser?.role === 'admin' && (
+                      <>
+                        <Button 
+                          onClick={() => onNavigate?.('account-management')} 
+                          variant="outline" 
+                          size="sm"
+                          className="bg-primary/10 hover:bg-primary/20 text-primary border-primary"
+                        >
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          Account Management
+                        </Button>
+                        <Button 
+                          onClick={() => onNavigate?.('admin-settings')} 
+                          variant="outline" 
+                          size="sm"
+                          className="bg-orange-50 hover:bg-orange-100 text-orange-600 border-orange-200"
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Admin Settings
+                        </Button>
+                      </>
                     )}
                   </div>
                 </>

@@ -37,10 +37,10 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
 
   // Projects by student year
   const yearData = [
-    { year: 'Year 1', count: projects.filter(p => p.author.year === 'Year 1').length },
-    { year: 'Year 2', count: projects.filter(p => p.author.year === 'Year 2').length },
-    { year: 'Year 3', count: projects.filter(p => p.author.year === 'Year 3').length },
-    { year: 'Year 4', count: projects.filter(p => p.author.year === 'Year 4').length }
+    { year: '68', count: projects.filter(p => p.author.year === '68').length },
+    { year: '67', count: projects.filter(p => p.author.year === '67').length },
+    { year: '66', count: projects.filter(p => p.author.year === '66').length },
+    { year: '65', count: projects.filter(p => p.author.year === '65').length }
   ];
 
   // Monthly project submissions (mock data)

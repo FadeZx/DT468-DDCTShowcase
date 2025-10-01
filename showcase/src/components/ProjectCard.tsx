@@ -10,7 +10,8 @@ interface ProjectCardProps {
     title: string;
     description: string;
     category: string;
-    thumbnail: string;
+    thumbnail?: string;
+    cover_image?: string;
     author: {
       name: string;
       avatar?: string;
@@ -35,7 +36,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
     >
       <div className="relative overflow-hidden rounded-t-lg">
         <ImageWithFallback
-          src={project.thumbnail}
+          src={project.cover_image || project.thumbnail || '/placeholder-project.jpg'}
           alt={project.title}
           className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
         />

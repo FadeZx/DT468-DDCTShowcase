@@ -54,7 +54,7 @@ const initializeMockData = async () => {
         name: 'Alex Chen',
         email: 'alex.chen@ddct.edu',
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-        year: 'Year 3',
+        year: '65',
         role: 'student',
         bio: 'Passionate game developer and 3D artist with a focus on character design and interactive storytelling.',
         skills: ['Unity', 'C#', 'Blender', '3D Modeling', 'Game Design'],
@@ -69,7 +69,7 @@ const initializeMockData = async () => {
         name: 'Sarah Williams',
         email: 'sarah.williams@ddct.edu',
         avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150',
-        year: 'Year 4',
+        year: '65',
         role: 'student',
         bio: 'Animation specialist and digital artist creating compelling visual narratives.',
         skills: ['After Effects', 'Maya', 'Character Animation', 'Motion Graphics'],
@@ -99,7 +99,7 @@ const initializeMockData = async () => {
         name: 'Maya Patel',
         email: 'maya.patel@ddct.edu',
         avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150',
-        year: 'Year 2',
+        year: '66',
         role: 'student',
         bio: 'VR/AR developer and simulation specialist.',
         skills: ['Unity', 'Unreal Engine', 'VR Development', 'AR', 'Simulation']
@@ -226,7 +226,7 @@ const initializeDemoUsers = async () => {
 
     // Create demo users for testing
     const demoUsers = [
-      { email: 'student@ddct.edu', password: 'demo123', name: 'Alex Chen', year: 'Year 3', role: 'student' },
+      { email: 'student@ddct.edu', password: 'demo123', name: 'Alex Chen', year: '68', role: 'student' },
       { email: 'teacher@ddct.edu', password: 'demo123', name: 'Dr. Michael Thompson', year: 'Faculty', role: 'teacher' },
       { email: 'admin@ddct.edu', password: 'demo123', name: 'Admin User', year: 'Staff', role: 'admin' }
     ];
@@ -331,7 +331,7 @@ app.get('/make-server-7d410c83/status', async (c) => {
   } catch (error) {
     return c.json({ 
       status: 'error', 
-      error: error.message,
+      error: (error as Error).message,
       timestamp: new Date().toISOString() 
     }, 500);
   }
@@ -545,10 +545,11 @@ app.get('/make-server-7d410c83/admin/analytics', async (c) => {
         Others: projects.filter((p: any) => p.category === 'Others').length
       },
       projectsByYear: {
-        'Year 1': projects.filter((p: any) => p.author.year === 'Year 1').length,
-        'Year 2': projects.filter((p: any) => p.author.year === 'Year 2').length,
-        'Year 3': projects.filter((p: any) => p.author.year === 'Year 3').length,
-        'Year 4': projects.filter((p: any) => p.author.year === 'Year 4').length
+        '69': projects.filter((p: any) => p.author.year === '69').length,
+        '68': projects.filter((p: any) => p.author.year === '68').length,
+        '67': projects.filter((p: any) => p.author.year === '67').length,
+        '66': projects.filter((p: any) => p.author.year === '66').length,
+        '65': projects.filter((p: any) => p.author.year === '65').length
       }
     };
 
