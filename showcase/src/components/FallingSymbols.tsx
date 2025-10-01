@@ -45,11 +45,11 @@ export function FallingSymbols() {
       symbol: symbols[Math.floor(Math.random() * symbols.length)],
       x: Math.random() * window.innerWidth,
       y: -50,
-      speed: Math.random() * 2 + 1, // 1-3 speed
+      speed: Math.random() * 1.5 + 0.8, // 0.8-2.3 speed (smoother)
       rotation: 0,
-      rotationSpeed: (Math.random() - 0.5) * 4, // -2 to 2 rotation speed
+      rotationSpeed: (Math.random() - 0.5) * 2, // -1 to 1 rotation speed (gentler)
       color: colors[Math.floor(Math.random() * colors.length)],
-      size: Math.random() * 20 + 15, // 15-35px size
+      size: Math.random() * 18 + 12, // 12-30px size
     });
 
     const updateSymbols = () => {
@@ -61,7 +61,7 @@ export function FallingSymbols() {
         })).filter(symbol => symbol.y < window.innerHeight + 50);
 
         // Add new symbols randomly
-        if (Math.random() < 0.1 && newSymbols.length < 50) {
+        if (Math.random() < 0.08 && newSymbols.length < 40) {
           newSymbols.push(createSymbol());
         }
 
@@ -69,10 +69,10 @@ export function FallingSymbols() {
       });
     };
 
-    const interval = setInterval(updateSymbols, 50);
+    const interval = setInterval(updateSymbols, 16);
     
     // Initial symbols
-    const initialSymbols = Array.from({ length: 20 }, createSymbol);
+    const initialSymbols = Array.from({ length: 15 }, createSymbol);
     initialSymbols.forEach((symbol, index) => {
       symbol.y = Math.random() * window.innerHeight;
     });
@@ -94,15 +94,16 @@ export function FallingSymbols() {
         return (
           <div
             key={symbol.id}
-            className="absolute transition-opacity duration-1000"
+            className="absolute transition-all duration-300 ease-out"
             style={{
               left: `${symbol.x}px`,
               top: `${symbol.y}px`,
               transform: `rotate(${symbol.rotation}deg)`,
               color: symbol.color,
               fontSize: `${symbol.size}px`,
-              textShadow: '0 0 10px rgba(0,0,0,0.3)',
+              textShadow: '0 0 8px rgba(0,0,0,0.2)',
               opacity: fadeOpacity,
+              filter: 'blur(0px)',
             }}
           >
             {symbol.symbol}
