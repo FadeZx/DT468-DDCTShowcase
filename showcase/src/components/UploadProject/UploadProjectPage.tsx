@@ -6,7 +6,7 @@ import { Textarea } from '../ui/textarea-simple';
 import { Badge } from '../ui/badge-simple';
 import { Progress } from '../ui/progress-simple';
 import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { projectId as SUPABASE_PROJECT_ID, publicAnonKey } from '../../utils/supabase/info';
 import { 
   Upload, 
   FileText, 
@@ -27,18 +27,30 @@ interface UploadProjectPageProps {
   onProjectUpdated?: () => void;
 }
 
+type MediaType = 'image' | 'video' | 'file';
+
+interface MediaItem {
+  id: string;          // local uid
+  type: MediaType;
+  name?: string;       // original filename or label
+  url: string;         // public URL (images/files) or embed URL (video)
+  path?: string;       // storage path for uploads (images/files)
+  isCover?: boolean;
+  order: number;       // for sorting
+  size?: number;       // file size (optional)
+}
+
 interface ProjectData {
   title: string;
   shortDescription: string;
   fullDescription: string;
   category: string;
   tags: string[];
-  coverImage: File | null;
-  screenshots: File[];
-  projectFiles: File[];
   price: number;
   isPublic: boolean;
   collaborators: string[];
+  /** replace coverImage, screenshots, projectFiles with: */
+  media: MediaItem[];
 }
 
 const STEPS = [
@@ -57,7 +69,7 @@ const CATEGORIES = [
 
 // Initialize Supabase client
 const supabase = createClient(
-  `https://${projectId}.supabase.co`,
+  `https://${SUPABASE_PROJECT_ID}.supabase.co`,
   publicAnonKey
 );
 
@@ -75,12 +87,10 @@ export default function UploadProjectPage({
     fullDescription: '',
     category: '',
     tags: [],
-    coverImage: null,
-    screenshots: [],
-    projectFiles: [],
     price: 0,
     isPublic: true,
-    collaborators: []
+    collaborators: [],
+    media: []
   });
 
   const [newTag, setNewTag] = useState('');
@@ -88,6 +98,7 @@ export default function UploadProjectPage({
   const [customCategory, setCustomCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [newCollaborator, setNewCollaborator] = useState('');
+  const [videoInput, setVideoInput] = useState('');
 
   const progress = (currentStep / STEPS.length) * 100;
 
@@ -149,28 +160,98 @@ export default function UploadProjectPage({
     }
   };
 
-  const handleFileUpload = (files: FileList | null, type: 'cover' | 'screenshots' | 'project') => {
-    if (!files) return;
+  const newUID = () =>
+    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
-    const fileArray = Array.from(files);
-    
-    switch (type) {
-      case 'cover':
-        setProjectData(prev => ({ ...prev, coverImage: fileArray[0] }));
-        break;
-      case 'screenshots':
-        setProjectData(prev => ({ 
-          ...prev, 
-          screenshots: [...prev.screenshots, ...fileArray] 
-        }));
-        break;
-      case 'project':
-        setProjectData(prev => ({ 
-          ...prev, 
-          projectFiles: [...prev.projectFiles, ...fileArray] 
-        }));
-        break;
+  const addMediaItems = (items: MediaItem[]) => {
+    setProjectData(prev => {
+      const next = [...prev.media, ...items];
+      if (!next.some(m => m.isCover)) {
+        const firstImg = next.find(m => m.type === 'image');
+        if (firstImg) firstImg.isCover = true;
+      }
+      return { ...prev, media: next.map((m, i) => ({ ...m, order: i })) };
+    });
+  };
+
+  const setAsCover = (id: string) => {
+    setProjectData(prev => ({
+      ...prev,
+      media: prev.media.map(m => ({ ...m, isCover: m.id === id }))
+    }));
+  };
+
+  const removeMedia = (id: string) => {
+    setProjectData(prev => {
+      const filtered = prev.media.filter(m => m.id !== id);
+      filtered.forEach((m, i) => (m.order = i));
+      if (!filtered.some(m => m.isCover) && filtered.some(m => m.type === 'image')) {
+        const firstImg = filtered.find(m => m.type === 'image');
+        if (firstImg) firstImg.isCover = true;
+      }
+      return { ...prev, media: filtered };
+    });
+  };
+
+  const moveMedia = (from: number, to: number) => {
+    setProjectData(prev => {
+      const arr = [...prev.media];
+      const item = arr.splice(from, 1)[0];
+      arr.splice(to, 0, item);
+      return { ...prev, media: arr.map((m, i) => ({ ...m, order: i })) };
+    });
+  };
+
+  const handleUpload = async (files: FileList | null, kind: 'image' | 'file', projectFolderId: string) => {
+    if (!files?.length) return [];
+    const results: MediaItem[] = [];
+    for (const file of Array.from(files)) {
+      const fileId = newUID();
+      const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+      const subdir = kind === 'image' ? 'images/originals' : 'docs';
+      const path = `projects/${projectFolderId}/${subdir}/${fileId}.${ext}`;
+      const { path: saved, url } = await uploadFileToSupabase(file, path);
+      results.push({
+        id: newUID(),
+        type: kind,
+        name: file.name,
+        url,
+        path: saved,
+        size: file.size,
+        isCover: false,
+        order: projectData.media.length + results.length
+      });
     }
+    return results;
+  };
+
+  const toEmbedURL = (raw: string) => {
+    try {
+      const u = new URL(raw);
+      if (u.hostname.includes('youtube.com')) {
+        const v = u.searchParams.get('v');
+        if (v) return `https://www.youtube.com/embed/${v}`;
+      } else if (u.hostname === 'youtu.be') {
+        return `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
+      } else if (u.hostname.includes('vimeo.com')) {
+        const id = u.pathname.split('/').filter(Boolean).pop();
+        if (id) return `https://player.vimeo.com/video/${id}`;
+      }
+    } catch {}
+    return raw;
+  };
+
+  const addVideoByUrl = () => {
+    const embed = toEmbedURL(videoInput.trim());
+    if (!embed) return;
+    addMediaItems([{
+      id: newUID(),
+      type: 'video',
+      url: embed,
+      name: 'Video',
+      order: projectData.media.length
+    }]);
+    setVideoInput('');
   };
 
   const addTag = () => {
@@ -260,157 +341,65 @@ export default function UploadProjectPage({
     }
 
     setIsUploading(true);
-    
+
     try {
       const finalCategory = projectData.category === 'Other' ? customCategory : projectData.category;
-      
-      // Generate or use existing project ID for folder structure
-      const projectFolderId = editProjectId || generateFileId();
-      
-      // Upload files to Supabase Storage with organized structure
-      let coverImageUrl = null;
-      let uploadedFiles: any[] = [];
+      const projectFolderId = editProjectId || newUID();
 
-      if (projectData.coverImage) {
-        const fileId = generateFileId();
-        const fileExt = projectData.coverImage.name.split('.').pop();
-        const coverPath = `projects/${projectFolderId}/images/originals/${fileId}.${fileExt}`;
-        const result = await uploadFileToSupabase(projectData.coverImage, coverPath);
-        coverImageUrl = result.url;
-        
-        // Save file metadata
-        uploadedFiles.push({
-          project_id: projectFolderId,
-          file_name: projectData.coverImage.name,
-          file_url: result.url,
-          file_path: result.path,
-          file_type: 'image',
-          file_size: projectData.coverImage.size,
-          is_cover: true
-        });
-      }
+      const cover = projectData.media.find(m => m.isCover && m.type === 'image')
+              || projectData.media.find(m => m.type === 'image');
 
-      // Upload screenshots
-      for (const screenshot of projectData.screenshots) {
-        const fileId = generateFileId();
-        const fileExt = screenshot.name.split('.').pop();
-        const screenshotPath = `projects/${projectFolderId}/images/originals/${fileId}.${fileExt}`;
-        const result = await uploadFileToSupabase(screenshot, screenshotPath);
-        
-        uploadedFiles.push({
-          project_id: projectFolderId,
-          file_name: screenshot.name,
-          file_url: result.url,
-          file_path: result.path,
-          file_type: 'image',
-          file_size: screenshot.size,
-          is_cover: false
-        });
-      }
-
-      // Upload project files
-      for (const file of projectData.projectFiles) {
-        const fileId = generateFileId();
-        const fileExt = file.name.split('.').pop();
-        const filePath = `projects/${projectFolderId}/docs/${fileId}.${fileExt}`;
-        const result = await uploadFileToSupabase(file, filePath);
-        
-        uploadedFiles.push({
-          project_id: projectFolderId,
-          file_name: file.name,
-          file_url: result.url,
-          file_path: result.path,
-          file_type: 'document',
-          file_size: file.size,
-          is_cover: false
-        });
-      }
-
-      // Create project record in database
       const projectRecord = {
-        ...(editMode ? {} : { id: projectFolderId }), // Only set ID for new projects
+        ...(editMode ? {} : { id: projectFolderId }),
         title: projectData.title,
         description: projectData.shortDescription,
         long_description: projectData.fullDescription,
         category: finalCategory,
-        cover_image: coverImageUrl,
+
         author_id: currentUser.id,
         tags: projectData.tags,
         status: projectData.isPublic ? 'published' : 'draft',
-        views: 0,
-        downloads: 0,
-        likes: 0,
-        price: 0
+        views: 0, downloads: 0, likes: 0,
+        price: projectData.price || 0
       };
 
       if (editMode && editProjectId) {
-        // Update existing project
         const { error: projectError } = await supabase
           .from('projects')
           .update(projectRecord)
           .eq('id', editProjectId);
-
         if (projectError) throw projectError;
-        
-        // Update project files if any new files were uploaded
-        if (uploadedFiles.length > 0) {
-          try {
-            const { error: filesError } = await supabase
-              .from('project_files')
-              .upsert(uploadedFiles);
-            
-            if (filesError) {
-              console.error('Error updating project files:', filesError);
-              // Don't throw error for files, just log it
-            }
-          } catch (fileError) {
-            console.error('Error with project files table:', fileError);
-            // Continue without files if table doesn't exist
-          }
-        }
-        
-        alert('Project updated successfully!');
-        if (onProjectUpdated) onProjectUpdated();
-        
-        // Navigate to home page
-        window.location.href = '/';
       } else {
-        // Create new project
-        const { data, error: projectError } = await supabase
+        const { error: projectError } = await supabase
           .from('projects')
           .insert([projectRecord])
-          .select()
           .single();
-
         if (projectError) throw projectError;
-        
-        // Insert project files
-        if (uploadedFiles.length > 0) {
-          try {
-            const { error: filesError } = await supabase
-              .from('project_files')
-              .insert(uploadedFiles);
-            
-            if (filesError) {
-              console.error('Error inserting project files:', filesError);
-              // Don't throw error for files, just log it
-            }
-          } catch (fileError) {
-            console.error('Error with project files table:', fileError);
-            // Continue without files if table doesn't exist
-          }
-        }
-        
-        alert('Project created successfully!');
-        if (onProjectCreated) onProjectCreated();
-        
-        // Navigate to home page
-        window.location.href = '/';
       }
-      
-    } catch (error: any) {
-      console.error('Error saving project:', error);
-      alert(error.message || 'Failed to save project. Please try again.');
+
+      if (projectData.media.length) {
+        const payload = projectData.media.map(m => ({
+          id: (crypto as any).randomUUID?.() || newUID(),
+          project_id: editProjectId || projectFolderId,
+          type: m.type,
+          url: m.url,
+          path: m.path || null,
+          name: m.name || null,
+          is_cover: !!m.isCover,
+          order: m.order,
+          size: m.size || null
+        }));
+        const { error: mediaErr } = await supabase.from('project_media').upsert(payload, { onConflict: 'id' });
+        if (mediaErr) console.error('media upsert error', mediaErr);
+      }
+
+      alert(editMode ? 'Project updated!' : 'Project created!');
+      onProjectUpdated?.();
+      onProjectCreated?.();
+      window.location.href = '/';
+    } catch (e:any) {
+      console.error(e);
+      alert(e.message || 'Failed to save project');
     } finally {
       setIsUploading(false);
     }
@@ -526,78 +515,99 @@ export default function UploadProjectPage({
       case 2:
         return (
           <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium mb-2">Cover Image *</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                {projectData.coverImage ? (
-                  <div className="space-y-2">
-                    <Image className="w-8 h-8 mx-auto text-green-500" />
-                    <p className="text-sm text-green-600">{projectData.coverImage.name}</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setProjectData(prev => ({ ...prev, coverImage: null }))}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Upload className="w-8 h-8 mx-auto text-gray-400" />
-                    <p className="text-sm text-gray-600">Upload a cover image for your project</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleFileUpload(e.target.files, 'cover')}
-                      className="hidden"
-                      id="cover-upload"
-                    />
-                    <Button asChild variant="outline">
-                      <label htmlFor="cover-upload" className="cursor-pointer">
-                        Choose Image
-                      </label>
-                    </Button>
-                  </div>
-                )}
-              </div>
+            {/* Images uploader */}
+            <label className="block text-sm font-medium mb-2">Images</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
+              <input
+                id="img-upload"
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const input = e.currentTarget;
+                  const files = e.target.files;
+                  const folder = editProjectId || newUID();
+                  (async () => {
+                    const items = await handleUpload(files, 'image', folder);
+                    addMediaItems(items);
+                    input.value = '';
+                  })();
+                }}
+              />
+              <Button asChild variant="outline"><label htmlFor="img-upload">Upload Images</label></Button>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Project Files *</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <div className="space-y-2">
-                  <Upload className="w-8 h-8 mx-auto text-gray-400" />
-                  <p className="text-sm text-gray-600">Upload your project files (ZIP, source code, etc.)</p>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => handleFileUpload(e.target.files, 'project')}
-                    className="hidden"
-                    id="project-upload"
-                  />
-                  <Button asChild variant="outline">
-                    <label htmlFor="project-upload" className="cursor-pointer">
-                      Upload Files
-                    </label>
-                  </Button>
-                </div>
-              </div>
-              {projectData.projectFiles.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-medium mb-2">Uploaded Files:</p>
-                  <div className="space-y-2">
-                    {projectData.projectFiles.map((file, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                        <FileText className="w-4 h-4 text-gray-500" />
-                        <span className="text-sm flex-1">{file.name}</span>
-                        <span className="text-xs text-gray-500">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
-                        </span>
-                      </div>
-                    ))}
+            {/* Video link */}
+            <label className="block text-sm font-medium mb-2">Add Video (YouTube/Vimeo)</label>
+            <div className="flex gap-2 mb-6">
+              <Input placeholder="Paste video URL" value={videoInput} onChange={e=>setVideoInput(e.target.value)} />
+              <Button onClick={addVideoByUrl}><Plus className="w-4 h-4"/></Button>
+            </div>
+
+            {/* Files */}
+            <label className="block text-sm font-medium mb-2">Project Files</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
+              <input
+                id="file-upload"
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const input = e.currentTarget;
+                  const files = e.target.files;
+                  const folder = editProjectId || newUID();
+                  (async () => {
+                    const items = await handleUpload(files, 'file', folder);
+                    addMediaItems(items);
+                    input.value = '';
+                  })();
+                }}
+              />
+              <Button asChild variant="outline"><label htmlFor="file-upload">Upload Files</label></Button>
+            </div>
+
+            {/* Sortable gallery */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {projectData.media
+                .sort((a,b)=>a.order-b.order)
+                .map((m, idx) => (
+                <div
+                  key={m.id}
+                  draggable
+                  onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', String(idx)); }}
+                  onDragOver={(e)=>e.preventDefault()}
+                  onDrop={(e)=>{ const from = Number(e.dataTransfer.getData('text/plain')); moveMedia(from, idx); }}
+                  className="p-3 rounded-lg border bg-white flex gap-3 items-start"
+                >
+                  <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+                    {m.type === 'image' ? (
+                      <img src={m.url} className="w-full h-full object-cover" />
+                    ) : m.type === 'video' ? (
+                      <span className="text-xs">Video</span>
+                    ) : (
+                      <span className="text-xs">File</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="secondary">{m.type}</Badge>
+                      {m.isCover && <Badge>Cover</Badge>}
+                    </div>
+                    <div className="text-xs text-gray-600 truncate">{m.name || m.url}</div>
+                    <div className="flex gap-2 mt-2">
+                      {m.type !== 'file' && (
+                        <Button size="sm" variant="outline" onClick={()=>setAsCover(m.id)}>
+                          Set as cover
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={()=>removeMedia(m.id)}>
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
         );
@@ -715,13 +725,19 @@ export default function UploadProjectPage({
                     <span className="font-medium">Visibility: </span>
                     {projectData.isPublic ? 'Public' : 'Private'}
                   </div>
+                  {(() => {
+                    const cover = projectData.media.find(m => m.isCover && m.type==='image')
+                               || projectData.media.find(m => m.type==='image');
+                    return (
+                      <div>
+                        <span className="font-medium">Cover: </span>
+                        {cover ? <span className="text-green-700">Set</span> : <span className="text-red-600">Not set</span>}
+                      </div>
+                    );
+                  })()}
                   <div>
-                    <span className="font-medium">Cover Image: </span>
-                    {projectData.coverImage ? 'Uploaded' : 'Not uploaded'}
-                  </div>
-                  <div>
-                    <span className="font-medium">Project Files: </span>
-                    {projectData.projectFiles.length} file(s)
+                    <span className="font-medium">Media items: </span>
+                    {projectData.media.length} item(s)
                   </div>
                 </div>
               </div>
@@ -748,8 +764,11 @@ export default function UploadProjectPage({
     switch (currentStep) {
       case 1:
         return projectData.title && projectData.shortDescription && projectData.category;
-      case 2:
-        return projectData.coverImage && projectData.projectFiles.length > 0;
+      case 2: {
+        const hasImage = projectData.media.some(m => m.type === 'image');
+        const hasPlayableOrFile = projectData.media.some(m => m.type === 'file' || m.type === 'video');
+        return hasImage && hasPlayableOrFile;
+      }
       case 3:
         return true;
       case 4:

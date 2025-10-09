@@ -65,7 +65,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
       <div className="mb-12">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">
-            Welcome to <span className="text-primary">DDCT Showcase</span>
+            WHERE IMAGINATION MEETS INNOVATION
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Discover amazing games, animations, and digital art created by talented students 

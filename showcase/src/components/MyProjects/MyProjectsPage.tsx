@@ -70,7 +70,7 @@ export default function MyProjectsPage({
             <p className="text-gray-600">Manage and track your uploaded projects</p>
           </div>
           <Button 
-            onClick={() => onNavigate('upload-project')}
+            onClick={() => onNavigate('/upload')}
             className="bg-orange-500 text-white hover:bg-orange-600 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -119,7 +119,7 @@ export default function MyProjectsPage({
               </div>
               {filter === 'all' && (
                 <Button 
-                  onClick={() => onNavigate('upload-project')}
+                  onClick={() => onNavigate('/upload')}
                   className="mt-4 bg-orange-500 hover:bg-orange-600"
                 >
                   Upload Your First Project

@@ -1,5 +1,6 @@
 import { Header } from './components/Header';
 import { useState, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { HomePage } from './components/HomePage';
 import { ProjectPage } from './components/ProjectPage';
 import { UserProfile } from './components/UserProfile';
@@ -18,13 +19,74 @@ const supabase = createClient(
   publicAnonKey
 );
 
+// Wrapper component for ProjectPage to handle dynamic project lookup
+function ProjectPageWrapper({ projects, currentUser, onEditProject }: { 
+  projects: any[]; 
+  currentUser: any; 
+  onEditProject: (projectId: string) => void; 
+}) {
+  const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
+  const project = projects.find(p => p.id === projectId);
+  
+  if (!project) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <p className="text-center">Project not found</p>
+      </div>
+    );
+  }
+  
+  return (
+    <ProjectPage
+      project={project}
+      onBack={() => navigate('/')}
+      currentUser={currentUser}
+      onEditProject={onEditProject}
+    />
+  );
+}
+
+// Wrapper component for UserProfile to handle dynamic user lookup
+function UserProfileWrapper({ projects, currentUser, onProjectClick, onNavigate }: { 
+  projects: any[]; 
+  currentUser: any; 
+  onProjectClick: (projectId: string) => void; 
+  onNavigate: (path: string) => void; 
+}) {
+  const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
+  const user = users.find((u: any) => u.id === userId);
+  
+  if (!user) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <p className="text-center">User not found</p>
+      </div>
+    );
+  }
+  
+  return (
+    <UserProfile
+      user={user}
+      projects={projects}
+      isOwnProfile={user.id === currentUser?.id}
+      currentUser={currentUser}
+      onProjectClick={onProjectClick}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+// Declare users variable at module level to be accessible by wrapper components
+let users: any[] = [];
+
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('home');
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [usersState, setUsersState] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Check for existing session on app load
@@ -82,9 +144,11 @@ export default function App() {
 
         if (usersError) {
           console.error('Error loading users:', usersError);
-          setUsers([]);
+          setUsersState([]);
+          users = [];
         } else {
-          setUsers(usersData || []);
+          setUsersState(usersData || []);
+          users = usersData || [];
           
           // Combine projects with author data
           const projectsWithAuthors = (projectsData || []).map(project => {
@@ -150,32 +214,24 @@ export default function App() {
       console.error('Logout error:', error);
     }
     setCurrentUser(null);
-    setCurrentPage('home');
+    navigate('/');
   };
 
-  const handleNavigate = (page: string) => {
-    setCurrentPage(page);
-    setSelectedProject(null);
-    setSelectedUser(null);
+  const handleNavigate = (path: string) => {
+    navigate(path);
   };
 
   const handleProjectClick = (projectId: string) => {
-    setSelectedProject(projectId);
-    setCurrentPage('project');
+    navigate(`/projects/${projectId}`);
   };
 
   const handleProfileClick = (userId: string) => {
-    setSelectedUser(userId);
-    setCurrentPage('user-profile');
+    navigate(`/users/${userId}`);
   };
 
   const handleBackFromProject = () => {
-    setCurrentPage('home');
-    setSelectedProject(null);
+    navigate('/');
   };
-
-  const currentProject = selectedProject ? projects.find(p => p.id === selectedProject) : null;
-  const profileUser = selectedUser ? users.find(u => u.id === selectedUser) : currentUser;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -183,7 +239,6 @@ export default function App() {
         currentUser={currentUser}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onNavigate={handleNavigate}
       />
 
       <main>
@@ -195,160 +250,195 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <>
-            {currentPage === 'home' && (
+          <Routes>
+            <Route path="/" element={
               <HomePage
                 projects={projects}
                 onProjectClick={handleProjectClick}
               />
-            )}
-
-            {currentPage === 'project' && currentProject && (
-              <ProjectPage
-                project={currentProject}
-                onBack={handleBackFromProject}
+            } />
+            
+            <Route path="/projects/:projectId" element={
+              <ProjectPageWrapper 
+                projects={projects}
                 currentUser={currentUser}
-                onEditProject={(projectId) => {
-                  setSelectedProject(projectId);
-                  setCurrentPage('edit-project');
+                onEditProject={(projectId: string) => {
+                  navigate(`/projects/${projectId}/edit`);
                 }}
               />
-            )}
-
-            {currentPage === 'profile' && currentUser && (
-              <UserProfile
-                user={currentUser}
+            } />
+            
+            <Route path="/projects/:projectId/edit" element={
+              currentUser?.role === 'student' ? (
+                <UploadProjectPage 
+                  currentUser={currentUser}
+                  onProjectUpdated={loadData}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Access denied</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/profile" element={
+              currentUser ? (
+                <UserProfile
+                  user={currentUser}
+                  projects={projects}
+                  isOwnProfile={true}
+                  currentUser={currentUser}
+                  onProjectClick={handleProjectClick}
+                  onNavigate={handleNavigate}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Please sign in to view your profile</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/users/:userId" element={
+              <UserProfileWrapper 
                 projects={projects}
-                isOwnProfile={true}
                 currentUser={currentUser}
                 onProjectClick={handleProjectClick}
                 onNavigate={handleNavigate}
               />
-            )}
-
-            {currentPage === 'user-profile' && profileUser && (
-              <UserProfile
-                user={profileUser}
-                projects={projects}
-                isOwnProfile={profileUser.id === currentUser?.id}
-                currentUser={currentUser}
-                onProjectClick={handleProjectClick}
-                onNavigate={handleNavigate}
-              />
-            )}
-
-            {currentPage === 'admin' && currentUser?.role === 'admin' && (
-              <AdminDashboard
-                projects={projects}
-                users={users}
-              />
-            )}
-
-            {currentPage === 'upload-project' && currentUser?.role === 'student' && (
-              <UploadProjectPage 
-                currentUser={currentUser}
-                onProjectCreated={loadData}
-              />
-            )}
-
-            {currentPage === 'my-projects' && currentUser?.role === 'student' && (
-              <MyProjectsPage 
-                currentUser={currentUser}
-                projects={projects}
-                onNavigate={handleNavigate}
-                onEditProject={(projectId) => {
-                  setSelectedProject(projectId);
-                  setCurrentPage('edit-project');
-                }}
-                onViewProject={handleProjectClick}
-              />
-            )}
-
-            {currentPage === 'edit-project' && currentUser?.role === 'student' && selectedProject && (
-              <UploadProjectPage 
-                currentUser={currentUser}
-                projectId={selectedProject}
-                onProjectUpdated={loadData}
-              />
-            )}
-
-            {currentPage === 'account-management' && currentUser?.role === 'admin' && (
-              <AccountManagement onAccountCreated={loadData} />
-            )}
-
-            {currentPage === 'account-settings' && currentUser && (
-              <AccountSettings 
-                user={currentUser} 
-                onClose={() => setCurrentPage('home')}
-              />
-            )}
-          </>
-        )}
-
-        {currentPage === 'browse' && (
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <h1 className="text-3xl font-bold mb-8">Browse All Projects</h1>
-            {projects.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {projects.map((project) => (
-                  <div 
-                    key={project.id} 
-                    onClick={() => handleProjectClick(project.id)}
-                    className="cursor-pointer"
-                  >
-                    <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
-                      <img 
-                        src={project.thumbnail || '/placeholder-project.jpg'} 
-                        alt={project.title}
-                        className="w-full h-48 object-cover"
-                      />
-                      <div className="p-4">
-                        <h3 className="font-semibold mb-2">{project.title}</h3>
-                        <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                            {project.category}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {project.author?.name}
-                          </span>
+            } />
+            
+            <Route path="/admin" element={
+              currentUser?.role === 'admin' ? (
+                <AdminDashboard
+                  projects={projects}
+                  users={users}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Access denied</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/upload" element={
+              currentUser?.role === 'student' ? (
+                <UploadProjectPage 
+                  currentUser={currentUser}
+                  onProjectCreated={loadData}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Access denied</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/my-projects" element={
+              currentUser?.role === 'student' ? (
+                <MyProjectsPage 
+                  currentUser={currentUser}
+                  projects={projects}
+                  onNavigate={handleNavigate}
+                  onEditProject={(projectId) => {
+                    navigate(`/projects/${projectId}/edit`);
+                  }}
+                  onViewProject={handleProjectClick}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Access denied</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/account-management" element={
+              currentUser?.role === 'admin' ? (
+                <AccountManagement onAccountCreated={loadData} />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Access denied</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/account-settings" element={
+              currentUser ? (
+                <AccountSettings 
+                  user={currentUser} 
+                  onClose={() => navigate('/')}
+                />
+              ) : (
+                <div className="max-w-7xl mx-auto px-6 py-8">
+                  <p className="text-center">Please sign in to access settings</p>
+                </div>
+              )
+            } />
+            
+            <Route path="/browse" element={
+              <div className="max-w-7xl mx-auto px-6 py-8">
+                <h1 className="text-3xl font-bold mb-8">Browse All Projects</h1>
+                {projects.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {projects.map((project) => (
+                      <div 
+                        key={project.id} 
+                        onClick={() => handleProjectClick(project.id)}
+                        className="cursor-pointer"
+                      >
+                        <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
+                          <img 
+                            src={project.thumbnail || '/placeholder-project.jpg'} 
+                            alt={project.title}
+                            className="w-full h-48 object-cover"
+                          />
+                          <div className="p-4">
+                            <h3 className="font-semibold mb-2">{project.title}</h3>
+                            <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                                {project.category}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {project.author?.name}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">No projects available yet.</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No projects available yet.</p>
+            } />
+            
+            <Route path="/events" element={
+              <div className="max-w-7xl mx-auto px-6 py-8">
+                <h1 className="text-3xl font-bold mb-8">Upcoming Events</h1>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="bg-card p-6 rounded-lg border">
+                    <h3 className="text-xl font-semibold mb-2">DDCT Game Jam 2025</h3>
+                    <p className="text-muted-foreground mb-4">March 15-17, 2025</p>
+                    <p>48-hour game development competition where students collaborate to create innovative games.</p>
+                  </div>
+                  <div className="bg-card p-6 rounded-lg border">
+                    <h3 className="text-xl font-semibold mb-2">Animation Showcase</h3>
+                    <p className="text-muted-foreground mb-4">April 2, 2025</p>
+                    <p>Annual film festival showcasing the best student animation projects.</p>
+                  </div>
+                  <div className="bg-card p-6 rounded-lg border">
+                    <h3 className="text-xl font-semibold mb-2">Portfolio Review Day</h3>
+                    <p className="text-muted-foreground mb-4">April 20, 2025</p>
+                    <p>Industry professionals review and provide feedback on student portfolios.</p>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+            } />
+          </Routes>
         )}
-
-        {currentPage === 'events' && (
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <h1 className="text-3xl font-bold mb-8">Upcoming Events</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="bg-card p-6 rounded-lg border">
-                <h3 className="text-xl font-semibold mb-2">DDCT Game Jam 2025</h3>
-                <p className="text-muted-foreground mb-4">March 15-17, 2025</p>
-                <p>48-hour game development competition where students collaborate to create innovative games.</p>
-              </div>
-              <div className="bg-card p-6 rounded-lg border">
-                <h3 className="text-xl font-semibold mb-2">Animation Showcase</h3>
-                <p className="text-muted-foreground mb-4">April 2, 2025</p>
-                <p>Annual film festival showcasing the best student animation projects.</p>
-              </div>
-              <div className="bg-card p-6 rounded-lg border">
-                <h3 className="text-xl font-semibold mb-2">Portfolio Review Day</h3>
-                <p className="text-muted-foreground mb-4">April 20, 2025</p>
-                <p>Industry professionals review and provide feedback on student portfolios.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
 
       </main>
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -10,10 +11,10 @@ interface HeaderProps {
   currentUser: any;
   onLogin: (email: string, password: string) => Promise<void>;
   onLogout: () => void;
-  onNavigate: (page: string) => void;
 }
 
-export function Header({ currentUser, onLogin, onLogout, onNavigate }: HeaderProps) {
+export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
@@ -22,49 +23,25 @@ export function Header({ currentUser, onLogin, onLogout, onNavigate }: HeaderPro
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Logo and Navigation */}
         <div className="flex items-center gap-8">
-          <div 
-            className="flex items-center gap-3 cursor-pointer"
-            onClick={() => onNavigate('home')}
-          >
+          <Link to="/" className="flex items-center gap-3 cursor-pointer">
             <img 
               src="/DDCTlogo.png" 
               alt="DDCT Logo" 
               className="h-8 w-auto"
             />
             <div className="text-xl font-semibold">Showcase</div>
-          </div>
+          </Link>
           
           <nav className="flex items-center gap-6">
-            <Button 
-              variant="ghost" 
-              onClick={() => onNavigate('home')}
-              className="hover:text-orange-500 transition-colors duration-200"
-            >
-              Discover
-            </Button>
-            <Button 
-              variant="ghost" 
-              onClick={() => onNavigate('browse')}
-              className="hover:text-orange-500 transition-colors duration-200"
-            >
-              Browse
-            </Button>
-            <Button 
-              variant="ghost" 
-              onClick={() => onNavigate('events')}
-              className="hover:text-orange-500 transition-colors duration-200"
-            >
-              Events
-            </Button>
-            {currentUser?.role === 'student' && (
+            <Link to="/">
               <Button 
                 variant="ghost" 
-                onClick={() => onNavigate('my-projects')}
                 className="hover:text-orange-500 transition-colors duration-200"
               >
-                My Projects
+                Events
               </Button>
-            )}
+            </Link>
+          
           </nav>
         </div>
 
@@ -84,13 +61,14 @@ export function Header({ currentUser, onLogin, onLogout, onNavigate }: HeaderPro
         {/* User Actions */}
         <div className="flex items-center gap-4">
           {currentUser?.role === 'student' && (
-            <Button 
-              onClick={() => onNavigate('upload-project')}
-              className="bg-orange-500 text-white hover:bg-orange-600 flex items-center gap-2"
-            >
-              <Upload className="w-4 h-4" />
-              Upload Project
-            </Button>
+            <Link to="/upload">
+              <Button 
+                className="bg-orange-500 text-white hover:text-orange-600 flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Upload Project
+              </Button>
+            </Link>
           )}
           
           {currentUser ? (
@@ -102,16 +80,16 @@ export function Header({ currentUser, onLogin, onLogout, onNavigate }: HeaderPro
                 </Avatar>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => onNavigate('profile')}>
+                <DropdownMenuItem onClick={() => navigate('/profile')}>
                   <User className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onNavigate('account-settings')}>
+                <DropdownMenuItem onClick={() => navigate('/account-settings')}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Account Settings</span>
                 </DropdownMenuItem>
                 {currentUser.role === 'admin' && (
-                  <DropdownMenuItem onClick={() => onNavigate('admin')}>
+                  <DropdownMenuItem onClick={() => navigate('/admin')}>
                     <BarChart3 className="mr-2 h-4 w-4" />
                     <span>Admin Dashboard</span>
                   </DropdownMenuItem>
