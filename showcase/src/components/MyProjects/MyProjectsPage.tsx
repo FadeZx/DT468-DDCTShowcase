@@ -178,7 +178,7 @@ export default function MyProjectsPage({
                   {/* Thumbnail */}
                 <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
                   <img
-                    src={project.cover_image || '/placeholder-project.jpg'}
+                    src={project.cover_image || '/placeholder-project.svg'}
                     alt={project.title}
                     className="w-full h-full object-cover"
                   />

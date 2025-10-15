@@ -206,7 +206,7 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                 {user.avatar ? (
                   <img src={user.avatar} alt={user.name} className="w-16 h-16 rounded-full" />
                 ) : (
-                  <User className="h-8 w-8 text-primary" />
+                  <img src="/placeholder-avatar.svg" alt={user.name} className="w-16 h-16 rounded-full" />
                 )}
               </div>
               <div>

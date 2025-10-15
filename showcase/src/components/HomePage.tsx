@@ -212,7 +212,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
                     src={project.thumbnail || ''}
                     alt={project.title}
                     className="w-10 h-10 rounded object-cover"
-                    fallbackSrc="/placeholder-project.jpg"
+                    fallbackSrc="/placeholder-project.svg"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{project.title}</p>

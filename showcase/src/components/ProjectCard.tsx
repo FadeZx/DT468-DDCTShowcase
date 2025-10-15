@@ -39,7 +39,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
           src={project.cover_image || project.thumbnail || ''}
           alt={project.title}
           className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
-          fallbackSrc="/placeholder-project.jpg"
+          fallbackSrc="/placeholder-project.svg"
         />
         {project.featured && (
           <Badge className="absolute top-2 left-2 bg-primary text-primary-foreground">

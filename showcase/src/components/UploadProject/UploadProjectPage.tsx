@@ -727,7 +727,11 @@ export default function UploadProjectPage({
                 >
                   <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
                     {m.type === 'image' ? (
-                      <img src={m.url} className="w-full h-full object-cover" />
+                      <img 
+                        src={m.url || '/placeholder-project.svg'} 
+                        className="w-full h-full object-cover" 
+                        alt={m.name || 'Media item'}
+                      />
                     ) : m.type === 'video' ? (
                       <span className="text-xs">Video</span>
                     ) : (

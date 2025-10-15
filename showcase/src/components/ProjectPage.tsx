@@ -137,7 +137,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 src={project.cover_image || ''}
                 alt={project.title}
                 className="w-full h-80 object-cover rounded-lg"
-                fallbackSrc="/placeholder-project.jpg"
+                fallbackSrc="/placeholder-project.svg"
                 supabase={supabase}
               />
             </CardContent>
@@ -239,7 +239,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                             src={file.file_url}
                             alt={file.file_name}
                             className="w-full h-48 object-cover rounded-lg"
-                            fallbackSrc="/placeholder-project.jpg"
+                            fallbackSrc="/placeholder-project.svg"
                             supabase={supabase}
                           />
                         ) : (

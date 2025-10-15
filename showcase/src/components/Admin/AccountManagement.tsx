@@ -501,7 +501,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                       {user.avatar ? (
                         <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full" />
                       ) : (
-                        <User className="h-6 w-6 text-primary" />
+                        <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
                       )}
                     </div>
                     

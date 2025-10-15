@@ -15,7 +15,7 @@ export function SupabaseImage({
   alt, 
   className = '', 
   style = {}, 
-  fallbackSrc = '/placeholder-project.jpg',
+  fallbackSrc = '/placeholder-project.svg',
   bucket = 'project-files',
   supabase
 }: SupabaseImageProps) {

@@ -116,7 +116,7 @@ export default function App() {
         featured: true,
         created_at: '2024-01-15T10:00:00Z',
         author_id: 'student-1',
-        cover_image: '/placeholder-project.jpg',
+        cover_image: '/placeholder-project.svg',
         views: 150,
         downloads: 45,
         likes: 23,
@@ -130,7 +130,7 @@ export default function App() {
         featured: true,
         created_at: '2024-01-10T14:30:00Z',
         author_id: 'student-2',
-        cover_image: '/placeholder-project.jpg',
+        cover_image: '/placeholder-project.svg',
         views: 89,
         downloads: 12,
         likes: 15,
@@ -391,7 +391,7 @@ export default function App() {
                         >
                           <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
                             <img 
-                              src={project.thumbnail || '/placeholder-project.jpg'} 
+                              src={project.thumbnail || '/placeholder-project.svg'} 
                               alt={project.title}
                               className="w-full h-48 object-cover"
                             />
