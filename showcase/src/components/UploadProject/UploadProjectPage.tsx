@@ -5,8 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea-simple';
 import { Badge } from '../ui/badge-simple';
 import { Progress } from '../ui/progress-simple';
-import { createClient } from '@supabase/supabase-js';
-import { projectId as SUPABASE_PROJECT_ID, publicAnonKey } from '../../utils/supabase/info';
+import supabase from '../../utils/supabase/client.js';
 import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 import {
   Upload,
@@ -77,11 +76,7 @@ const CATEGORIES = [
   'Other'
 ];
 
-// Initialize Supabase client
-const supabase = createClient(
-  `https://${SUPABASE_PROJECT_ID}.supabase.co`,
-  publicAnonKey
-);
+
 
 const generateUUID = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)

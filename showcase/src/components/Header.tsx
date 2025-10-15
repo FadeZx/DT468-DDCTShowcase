@@ -4,19 +4,17 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { LoginDialog } from './LoginDialog';
 import { Search, User, Settings, LogOut, BarChart3, Upload } from 'lucide-react';
 
 interface HeaderProps {
   currentUser: any;
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: () => void;
   onLogout: () => void;
 }
 
 export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
 
   return (
     <header className="bg-card border-b border-border px-6 py-4">
@@ -102,7 +100,7 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
             </DropdownMenu>
           ) : (
             <Button 
-              onClick={() => setShowLoginDialog(true)} 
+              onClick={onLogin} 
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               Sign In
@@ -110,12 +108,6 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
           )}
         </div>
       </div>
-
-      <LoginDialog
-        isOpen={showLoginDialog}
-        onClose={() => setShowLoginDialog(false)}
-        onLogin={onLogin}
-      />
     </header>
   );
 }
