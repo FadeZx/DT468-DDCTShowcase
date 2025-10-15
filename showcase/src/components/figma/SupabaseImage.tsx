@@ -7,7 +7,6 @@ interface SupabaseImageProps {
   style?: React.CSSProperties;
   fallbackSrc?: string;
   bucket?: string;
-  supabase: any;
 }
 
 export function SupabaseImage({ 
@@ -16,8 +15,7 @@ export function SupabaseImage({
   className = '', 
   style = {}, 
   fallbackSrc = '/placeholder-project.svg',
-  bucket = 'project-files',
-  supabase
+  bucket = 'project-files'
 }: SupabaseImageProps) {
   const [imageUrl, setImageUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -38,30 +36,13 @@ export function SupabaseImage({
         return;
       }
 
-      // If it's a Supabase storage path, get signed URL
+      // If it's a valid URL or path, use it directly
       try {
-        // Check if it's a public URL first
-        if (src.includes('supabase.co/storage/v1/object/public/')) {
+        if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('/')) {
           setImageUrl(src);
-          setLoading(false);
-          return;
-        }
-
-        // Try to get a signed URL for private files
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(src, 3600); // 1 hour expiry
-
-        if (error) {
-          console.warn('Error getting signed URL:', error);
-          // Fall back to public URL
-          const { data: publicUrlData } = supabase.storage
-            .from(bucket)
-            .getPublicUrl(src);
-          
-          setImageUrl(publicUrlData.publicUrl);
         } else {
-          setImageUrl(data?.signedUrl || fallbackSrc);
+          // For non-URL paths, use fallback
+          setImageUrl(fallbackSrc);
         }
       } catch (err) {
         console.error('Error loading image:', err);

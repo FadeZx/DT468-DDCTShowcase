@@ -11,13 +11,17 @@ import MyProjectsPage from './components/MyProjects/MyProjectsPage';
 import { AccountManagement } from './components/Admin/AccountManagement';
 import { AccountSettings } from './components/Profile/AccountSettings';
 import { Toaster } from './components/ui/sonner';
+import { EventsPage } from './components/EventsPage';
+import { EventPage } from './components/EventPage';
+import { EventManagement } from './components/EventManagement';
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
-function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject }: {
+function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject, supabase }: {
   projects: any[];
   currentUser: any;
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
+  supabase: any;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -38,6 +42,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
       currentUser={currentUser}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
+      supabase={supabase}
     />
   );
 }
@@ -225,6 +230,14 @@ export default function App() {
     console.log('Delete project:', projectId);
   };
 
+  const handleEventClick = (eventId: string) => {
+    navigate(`/events/${eventId}`);
+  };
+
+  const handleEventBack = () => {
+    navigate('/events');
+  };
+
   const loadData = () => {
     loadMockData();
   };
@@ -268,6 +281,7 @@ export default function App() {
                     navigate(`/projects/${projectId}/edit`);
                   }}
                   onDeleteProject={handleDeleteProject}
+          
                 />
               } />
 
@@ -420,26 +434,21 @@ export default function App() {
               } />
               
               <Route path="/events" element={
-                <div className="max-w-7xl mx-auto px-6 py-8">
-                  <h1 className="text-3xl font-bold mb-8">Upcoming Events</h1>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="bg-card p-6 rounded-lg border">
-                      <h3 className="text-xl font-semibold mb-2">DDCT Game Jam 2025</h3>
-                      <p className="text-muted-foreground mb-4">March 15-17, 2025</p>
-                      <p>48-hour game development competition where students collaborate to create innovative games.</p>
-                    </div>
-                    <div className="bg-card p-6 rounded-lg border">
-                      <h3 className="text-xl font-semibold mb-2">Animation Showcase</h3>
-                      <p className="text-muted-foreground mb-4">April 2, 2025</p>
-                      <p>Annual film festival showcasing the best student animation projects.</p>
-                    </div>
-                    <div className="bg-card p-6 rounded-lg border">
-                      <h3 className="text-xl font-semibold mb-2">Portfolio Review Day</h3>
-                      <p className="text-muted-foreground mb-4">April 20, 2025</p>
-                      <p>Industry professionals review and provide feedback on student portfolios.</p>
-                    </div>
+                <EventsPage onEventClick={handleEventClick} />
+              } />
+              
+              <Route path="/events/:eventId" element={
+                <EventPage eventId={location.pathname.split('/').pop() || ''} onBack={handleEventBack} />
+              } />
+              
+              <Route path="/admin/events" element={
+                currentUser?.role === 'admin' ? (
+                  <EventManagement />
+                ) : (
+                  <div className="max-w-7xl mx-auto px-6 py-8">
+                    <p className="text-center">Access denied</p>
                   </div>
-                </div>
+                )
               } />
             </Routes>
           </>

@@ -138,7 +138,7 @@ export function SteamLikeFeatured({ projects, onProjectClick }: SteamLikeFeature
         <div 
           className="absolute inset-0 bg-cover bg-center transition-all duration-1000 ease-in-out blur-sm"
           style={{
-            backgroundImage: `url(${currentProject.banner || currentProject.thumbnail})`,
+            backgroundImage: `url(${currentProject.banner || '/placeholder-project.svg'})`,
           }}
         >
           <div className="absolute inset-0 bg-black/70" />
@@ -197,7 +197,7 @@ export function SteamLikeFeatured({ projects, onProjectClick }: SteamLikeFeature
                     isCenter ? 'ring-2 ring-orange-500' : ''
                   }`}>
                     <img
-                      src={project.thumbnail}
+                      src="/placeholder-project.svg"
                       alt={project.title}
                       className="w-full h-full object-cover"
                     />

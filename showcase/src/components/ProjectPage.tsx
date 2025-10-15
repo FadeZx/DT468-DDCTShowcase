@@ -138,7 +138,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 alt={project.title}
                 className="w-full h-80 object-cover rounded-lg"
                 fallbackSrc="/placeholder-project.svg"
-                supabase={supabase}
               />
             </CardContent>
           </Card>
@@ -240,7 +239,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                             alt={file.file_name}
                             className="w-full h-48 object-cover rounded-lg"
                             fallbackSrc="/placeholder-project.svg"
-                            supabase={supabase}
                           />
                         ) : (
                           <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
@@ -461,7 +459,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             <CardContent>
               <div className="flex items-center gap-3 mb-4">
                 <Avatar>
-                  <AvatarImage src={project.author?.avatar} />
+                  <AvatarImage src="/placeholder-avatar.svg" />
                   <AvatarFallback>{project.author?.name?.[0] || 'U'}</AvatarFallback>
                 </Avatar>
                 <div>

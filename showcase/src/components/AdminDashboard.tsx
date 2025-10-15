@@ -257,7 +257,7 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
                   <div key={project.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center gap-4">
                       <img 
-                        src={project.thumbnail} 
+                        src="/placeholder-project.svg" 
                         alt={project.title}
                         className="w-16 h-16 rounded object-cover"
                       />
@@ -280,9 +280,14 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
                         <div>{project.stats.views} views</div>
                         <div className="text-muted-foreground">{project.stats.likes} likes</div>
                       </div>
-                      <Button variant="outline" size="sm">
-                        Manage
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button variant="outline" size="sm">
+                          Edit
+                        </Button>
+                        <Button variant="destructive" size="sm">
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}

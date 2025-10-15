@@ -73,7 +73,7 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Avatar className="cursor-pointer">
-                  <AvatarImage src={currentUser.avatar || '/placeholder-avatar.svg'} />
+                  <AvatarImage src="/placeholder-avatar.svg" />
                   <AvatarFallback>{currentUser.name?.[0] || 'U'}</AvatarFallback>
                 </Avatar>
               </DropdownMenuTrigger>

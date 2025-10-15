@@ -64,7 +64,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
         
         <div className="flex items-center gap-2 mb-3">
           <Avatar className="w-6 h-6">
-            <AvatarImage src={project.author.avatar} />
+            <AvatarImage src="/placeholder-avatar.svg" />
             <AvatarFallback className="text-xs">{project.author.name[0]}</AvatarFallback>
           </Avatar>
           <span className="text-sm text-muted-foreground">

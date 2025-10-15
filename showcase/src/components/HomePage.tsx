@@ -209,7 +209,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
               {recentProjects.slice(0, 5).map((project) => (
                 <div key={project.id} className="flex items-center gap-3">
                   <SupabaseImage
-                    src={project.thumbnail || ''}
+                    src="/placeholder-project.svg"
                     alt={project.title}
                     className="w-10 h-10 rounded object-cover"
                     fallbackSrc="/placeholder-project.svg"

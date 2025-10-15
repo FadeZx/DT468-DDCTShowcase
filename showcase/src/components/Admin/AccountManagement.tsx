@@ -498,11 +498,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      {user.avatar ? (
-                        <img src={user.avatar} alt={user.name} className="w-12 h-12 rounded-full" />
-                      ) : (
-                        <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
-                      )}
+                      <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
                     </div>
                     
                     <div>

@@ -51,7 +51,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
           <Card>
             <CardContent className="p-6 text-center">
               <Avatar className="w-24 h-24 mx-auto mb-4">
-                <AvatarImage src={user.avatar} />
+                <AvatarImage src="/placeholder-avatar.svg" />
                 <AvatarFallback className="text-2xl">{user.name[0]}</AvatarFallback>
               </Avatar>
               
