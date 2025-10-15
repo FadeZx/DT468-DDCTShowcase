@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
-import { 
-  ArrowLeft, Download, Heart, Share2, Eye, Calendar, 
-  Github, ExternalLink, Play, Users, Edit 
+import {
+  ArrowLeft, Download, Heart, Share2, Eye, Calendar,
+  Github, ExternalLink, Play, Users, Edit, Trash2
 } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
 
@@ -16,21 +16,28 @@ interface ProjectPageProps {
   onBack: () => void;
   currentUser: any;
   onEditProject?: (projectId: string) => void;
+  onDeleteProject?: (projectId: string) => void;
   supabase: any;
 }
 
-export function ProjectPage({ project, onBack, currentUser, onEditProject, supabase }: ProjectPageProps) {
+export function ProjectPage({ project, onBack, currentUser, onEditProject, onDeleteProject, supabase }: ProjectPageProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
-  const [projectFiles, setProjectFiles] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [projectFiles, setProjectFiles] = useState<any[]>(project.media?.all || []);
+  const [loading, setLoading] = useState(!(project.media?.all?.length));
 
   useEffect(() => {
-    loadProjectFiles();
-  }, [project.id]);
+    if (project.media?.all) {
+      setProjectFiles(project.media.all);
+      setLoading(false);
+    } else {
+      loadProjectFiles();
+    }
+  }, [project.id, project.media?.all]);
 
   const loadProjectFiles = async () => {
     try {
+      setLoading(true);
       const { data: files, error } = await supabase
         .from('project_files')
         .select('*')
@@ -53,7 +60,12 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, supab
   };
 
   const canEdit = currentUser && (
-    currentUser.id === project.author_id || 
+    currentUser.id === project.author_id ||
+    currentUser.role === 'admin'
+  );
+
+  const canDelete = currentUser && (
+    currentUser.id === project.author_id ||
     currentUser.role === 'admin'
   );
 
@@ -87,16 +99,32 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, supab
           <p className="text-muted-foreground">{project.description}</p>
         </div>
         
-        {canEdit && onEditProject && (
-          <Button 
-            variant="outline"
-            onClick={() => onEditProject(project.id)}
-            className="flex items-center gap-2"
-          >
-            <Edit className="w-4 h-4" />
-            Edit Project
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canEdit && onEditProject && (
+            <Button
+              variant="outline"
+              onClick={() => onEditProject(project.id)}
+              className="flex items-center gap-2"
+            >
+              <Edit className="w-4 h-4" />
+              Edit Project
+            </Button>
+          )}
+          {canDelete && onDeleteProject && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm('Are you sure you want to delete this project?')) {
+                  onDeleteProject(project.id);
+                }
+              }}
+              className="flex items-center gap-2 text-red-600 border-red-300 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -163,6 +191,19 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, supab
                       <div className="flex flex-wrap gap-2">
                         {project.technologies.split(',').map((tech: string, index: number) => (
                           <Badge key={index} variant="secondary">{tech.trim()}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {project.collaborators && project.collaborators.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2">Collaborators</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {project.collaborators.map((collaborator: any) => (
+                          <Badge key={collaborator.id} variant="outline">
+                            {collaborator.name}
+                          </Badge>
                         ))}
                       </div>
                     </div>

@@ -7,12 +7,12 @@ import { Badge } from '../ui/badge-simple';
 import { Progress } from '../ui/progress-simple';
 import { createClient } from '@supabase/supabase-js';
 import { projectId as SUPABASE_PROJECT_ID, publicAnonKey } from '../../utils/supabase/info';
-import { 
-  Upload, 
-  FileText, 
-  Image, 
-  Settings, 
-  Eye, 
+import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
+import {
+  Upload,
+  FileText,
+  Settings,
+  Eye,
   CheckCircle,
   ArrowLeft,
   ArrowRight,
@@ -29,15 +29,26 @@ interface UploadProjectPageProps {
 
 type MediaType = 'image' | 'video' | 'file';
 
+type MediaSource = 'storage' | 'external' | 'local';
+
 interface MediaItem {
-  id: string;          // local uid
+  id: string;
   type: MediaType;
-  name?: string;       // original filename or label
-  url: string;         // public URL (images/files) or embed URL (video)
-  path?: string;       // storage path for uploads (images/files)
+  name?: string;
+  url: string;
+  path?: string | null;
   isCover?: boolean;
-  order: number;       // for sorting
-  size?: number;       // file size (optional)
+  order: number;
+  size?: number;
+  mimeType?: string;
+  fileType?: string;
+  source?: MediaSource;
+}
+
+interface Collaborator {
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface ProjectData {
@@ -48,8 +59,7 @@ interface ProjectData {
   tags: string[];
   price: number;
   isPublic: boolean;
-  collaborators: string[];
-  /** replace coverImage, screenshots, projectFiles with: */
+  collaborators: Collaborator[];
   media: MediaItem[];
 }
 
@@ -73,13 +83,23 @@ const supabase = createClient(
   publicAnonKey
 );
 
-export default function UploadProjectPage({ 
-  currentUser, 
-  projectId: editProjectId, 
-  onProjectCreated, 
-  onProjectUpdated 
+const generateUUID = () =>
+  (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+    ? (crypto as any).randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+
+export default function UploadProjectPage({
+  currentUser,
+  projectId: editProjectId,
+  onProjectCreated,
+  onProjectUpdated
 }: UploadProjectPageProps = {}) {
   const editMode = !!editProjectId;
+  const [projectFolderId] = useState(() => editProjectId || generateUUID());
   const [currentStep, setCurrentStep] = useState(1);
   const [projectData, setProjectData] = useState<ProjectData>({
     title: '',
@@ -99,6 +119,8 @@ export default function UploadProjectPage({
   const [loading, setLoading] = useState(false);
   const [newCollaborator, setNewCollaborator] = useState('');
   const [videoInput, setVideoInput] = useState('');
+  const [externalFileName, setExternalFileName] = useState('');
+  const [externalFileUrl, setExternalFileUrl] = useState('');
 
   const progress = (currentStep / STEPS.length) * 100;
 
@@ -121,20 +143,78 @@ export default function UploadProjectPage({
       if (error) throw error;
 
       if (project) {
-        // Prefill form with existing project data
+        const tags = Array.isArray(project.tags)
+          ? project.tags
+          : typeof project.tags === 'string'
+            ? project.tags.split(',').map((t: string) => t.trim())
+            : [];
+
+        let mediaItems: MediaItem[] = [];
+        try {
+          const { data: filesData } = await supabase
+            .from('project_files')
+            .select('*')
+            .eq('project_id', editProjectId)
+            .order('created_at', { ascending: true });
+
+          mediaItems = (filesData || []).map((file, index) => ({
+            id: file.id || generateUUID(),
+            type: file.file_type === 'image'
+              ? 'image'
+              : file.file_type === 'video'
+                ? 'video'
+                : 'file',
+            name: file.file_name || undefined,
+            url: file.file_url,
+            path: file.file_path,
+            size: file.file_size || undefined,
+            mimeType: file.mime_type || undefined,
+            fileType: file.file_type || undefined,
+            source: file.file_path?.startsWith('projects/') ? 'storage' : 'external',
+            isCover: !!file.is_cover,
+            order: index
+          }));
+        } catch (filesError) {
+          console.error('Error loading project files:', filesError);
+        }
+
+        let collaboratorEntries: Collaborator[] = [];
+        try {
+          const { data: collaboratorLinks } = await supabase
+            .from('project_collaborators')
+            .select('user_id')
+            .eq('project_id', editProjectId);
+
+          if (collaboratorLinks?.length) {
+            const collaboratorIds = collaboratorLinks.map(link => link.user_id);
+            const { data: collaboratorProfiles } = await supabase
+              .from('profiles')
+              .select('id, name, email')
+              .in('id', collaboratorIds);
+
+            collaboratorEntries = (collaboratorProfiles || []).map(profile => ({
+              id: profile.id,
+              name: profile.name || profile.email || 'Collaborator',
+              email: profile.email || ''
+            }));
+          }
+        } catch (collaboratorError) {
+          console.error('Error loading collaborators:', collaboratorError);
+        }
+
         setProjectData(prev => ({
           ...prev,
           title: project.title || '',
           shortDescription: project.description || '',
           fullDescription: project.long_description || '',
           category: project.category || '',
-          tags: Array.isArray(project.tags) ? project.tags : 
-                typeof project.tags === 'string' ? project.tags.split(',').map((t: string) => t.trim()) : [],
+          tags,
           price: project.price || 0,
-          isPublic: project.status === 'published'
+          isPublic: project.status === 'published',
+          media: mediaItems,
+          collaborators: collaboratorEntries
         }));
 
-        // Set custom category if it's "Other"
         if (!CATEGORIES.includes(project.category) && project.category) {
           setProjectData(prev => ({ ...prev, category: 'Other' }));
           setCustomCategory(project.category);
@@ -160,9 +240,6 @@ export default function UploadProjectPage({
     }
   };
 
-  const newUID = () =>
-    Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-
   const addMediaItems = (items: MediaItem[]) => {
     setProjectData(prev => {
       const next = [...prev.media, ...items];
@@ -181,7 +258,16 @@ export default function UploadProjectPage({
     }));
   };
 
-  const removeMedia = (id: string) => {
+  const removeMedia = async (id: string) => {
+    const target = projectData.media.find(m => m.id === id);
+    if (target?.path && target.path.startsWith('projects/')) {
+      try {
+        await deleteProjectFile(target.path);
+      } catch (error) {
+        console.error('Failed to delete file from storage', error);
+      }
+    }
+
     setProjectData(prev => {
       const filtered = prev.media.filter(m => m.id !== id);
       filtered.forEach((m, i) => (m.order = i));
@@ -202,22 +288,27 @@ export default function UploadProjectPage({
     });
   };
 
-  const handleUpload = async (files: FileList | null, kind: 'image' | 'file', projectFolderId: string) => {
+  const handleUpload = async (files: FileList | null, kind: 'image' | 'file') => {
     if (!files?.length) return [];
     const results: MediaItem[] = [];
     for (const file of Array.from(files)) {
-      const fileId = newUID();
-      const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
-      const subdir = kind === 'image' ? 'images/originals' : 'docs';
-      const path = `projects/${projectFolderId}/${subdir}/${fileId}.${ext}`;
-      const { path: saved, url } = await uploadFileToSupabase(file, path);
+      const uploadResult = await uploadProjectFile({
+        projectId: projectFolderId,
+        fileType: kind === 'image' ? 'image' : 'document',
+        file
+      });
+      const saved = uploadResult.filePath;
+      const url = uploadResult.fileUrl;
       results.push({
-        id: newUID(),
+        id: generateUUID(),
         type: kind,
         name: file.name,
         url,
         path: saved,
         size: file.size,
+        mimeType: uploadResult.mimeType,
+        fileType: kind === 'image' ? 'image' : 'document',
+        source: 'storage',
         isCover: false,
         order: projectData.media.length + results.length
       });
@@ -245,13 +336,43 @@ export default function UploadProjectPage({
     const embed = toEmbedURL(videoInput.trim());
     if (!embed) return;
     addMediaItems([{
-      id: newUID(),
+      id: generateUUID(),
       type: 'video',
       url: embed,
       name: 'Video',
-      order: projectData.media.length
+      order: projectData.media.length,
+      fileType: 'video',
+      source: 'external',
+      path: `external:${embed}`
     }]);
     setVideoInput('');
+  };
+
+  const addExternalFile = () => {
+    const label = externalFileName.trim();
+    const link = externalFileUrl.trim();
+    if (!label || !link) {
+      alert('Please provide a name and a valid URL for the file');
+      return;
+    }
+
+    try {
+      const validated = new URL(link);
+      addMediaItems([{
+        id: generateUUID(),
+        type: 'file',
+        name: label,
+        url: validated.toString(),
+        path: `external:${validated.toString()}`,
+        fileType: 'document',
+        source: 'external',
+        order: projectData.media.length
+      }]);
+      setExternalFileName('');
+      setExternalFileUrl('');
+    } catch {
+      alert('Please enter a valid URL');
+    }
   };
 
   const addTag = () => {
@@ -273,7 +394,7 @@ export default function UploadProjectPage({
 
   const addCollaborator = async () => {
     if (!newCollaborator.trim()) return;
-    
+
     try {
       // Search for user by email or username
       const { data: users, error } = await supabase
@@ -285,10 +406,17 @@ export default function UploadProjectPage({
 
       if (users && users.length > 0) {
         const user = users[0];
-        if (!projectData.collaborators.includes(user.email)) {
+        if (!projectData.collaborators.some(collab => collab.id === user.id)) {
           setProjectData(prev => ({
             ...prev,
-            collaborators: [...prev.collaborators, user.email]
+            collaborators: [
+              ...prev.collaborators,
+              {
+                id: user.id,
+                name: user.name || user.email || 'Collaborator',
+                email: user.email || ''
+              }
+            ]
           }));
           setNewCollaborator('');
         } else {
@@ -303,35 +431,11 @@ export default function UploadProjectPage({
     }
   };
 
-  const removeCollaborator = (collaboratorToRemove: string) => {
+  const removeCollaborator = (collaboratorId: string) => {
     setProjectData(prev => ({
       ...prev,
-      collaborators: prev.collaborators.filter(collab => collab !== collaboratorToRemove)
+      collaborators: prev.collaborators.filter(collab => collab.id !== collaboratorId)
     }));
-  };
-
-  const uploadFileToSupabase = async (file: File, path: string) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('project-files')
-        .upload(path, file);
-
-      if (error) throw error;
-      
-      // Get public URL for the uploaded file
-      const { data: { publicUrl } } = supabase.storage
-        .from('project-files')
-        .getPublicUrl(data.path);
-      
-      return { path: data.path, url: publicUrl };
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      throw error;
-    }
-  };
-
-  const generateFileId = () => {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   };
 
   const handleSubmit = async () => {
@@ -343,14 +447,20 @@ export default function UploadProjectPage({
     setIsUploading(true);
 
     try {
-      const finalCategory = projectData.category === 'Other' ? customCategory : projectData.category;
-      const projectFolderId = editProjectId || newUID();
+      const finalCategoryRaw = projectData.category === 'Other' ? customCategory : projectData.category;
+      const finalCategory = finalCategoryRaw?.trim();
+      if (!finalCategory) {
+        alert('Please select a category for your project.');
+        setIsUploading(false);
+        return;
+      }
+      const targetProjectId = editProjectId || projectFolderId;
 
       const cover = projectData.media.find(m => m.isCover && m.type === 'image')
               || projectData.media.find(m => m.type === 'image');
 
       const projectRecord = {
-        ...(editMode ? {} : { id: projectFolderId }),
+        ...(editMode ? {} : { id: targetProjectId }),
         title: projectData.title,
         description: projectData.shortDescription,
         long_description: projectData.fullDescription,
@@ -359,8 +469,8 @@ export default function UploadProjectPage({
         author_id: currentUser.id,
         tags: projectData.tags,
         status: projectData.isPublic ? 'published' : 'draft',
-        views: 0, downloads: 0, likes: 0,
-        price: projectData.price || 0
+        price: projectData.price || 0,
+        cover_image: cover?.url || null
       };
 
       if (editMode && editProjectId) {
@@ -377,20 +487,43 @@ export default function UploadProjectPage({
         if (projectError) throw projectError;
       }
 
-      if (projectData.media.length) {
-        const payload = projectData.media.map(m => ({
-          id: (crypto as any).randomUUID?.() || newUID(),
-          project_id: editProjectId || projectFolderId,
-          type: m.type,
-          url: m.url,
-          path: m.path || null,
-          name: m.name || null,
-          is_cover: !!m.isCover,
-          order: m.order,
-          size: m.size || null
+      const filesPayload = projectData.media.map(m => ({
+        id: m.id || generateUUID(),
+        project_id: targetProjectId,
+        file_name: m.name || `${m.type}-${m.order + 1}`,
+        file_url: m.url,
+        file_path: m.path || `external:${m.url}`,
+        file_type: m.fileType || (m.type === 'image' ? 'image' : m.type === 'video' ? 'video' : 'document'),
+        file_size: m.size || null,
+        mime_type: m.mimeType || null,
+        is_cover: !!m.isCover
+      }));
+
+      if (editMode) {
+        await supabase.from('project_files').delete().eq('project_id', targetProjectId);
+      }
+
+      if (filesPayload.length) {
+        const { error: filesError } = await supabase.from('project_files').insert(filesPayload);
+        if (filesError) throw filesError;
+      }
+
+      if (editMode) {
+        await supabase.from('project_collaborators').delete().eq('project_id', targetProjectId);
+      }
+
+      if (projectData.collaborators.length) {
+        const collaboratorRows = projectData.collaborators.map(collaborator => ({
+          project_id: targetProjectId,
+          user_id: collaborator.id,
+          role: 'collaborator',
+          invited_by: currentUser.id
         }));
-        const { error: mediaErr } = await supabase.from('project_media').upsert(payload, { onConflict: 'id' });
-        if (mediaErr) console.error('media upsert error', mediaErr);
+
+        const { error: collabError } = await supabase
+          .from('project_collaborators')
+          .upsert(collaboratorRows, { onConflict: 'project_id,user_id' });
+        if (collabError) throw collabError;
       }
 
       alert(editMode ? 'Project updated!' : 'Project created!');
@@ -527,9 +660,8 @@ export default function UploadProjectPage({
                 onChange={(e) => {
                   const input = e.currentTarget;
                   const files = e.target.files;
-                  const folder = editProjectId || newUID();
                   (async () => {
-                    const items = await handleUpload(files, 'image', folder);
+                    const items = await handleUpload(files, 'image');
                     addMediaItems(items);
                     input.value = '';
                   })();
@@ -556,9 +688,8 @@ export default function UploadProjectPage({
                 onChange={(e) => {
                   const input = e.currentTarget;
                   const files = e.target.files;
-                  const folder = editProjectId || newUID();
                   (async () => {
-                    const items = await handleUpload(files, 'file', folder);
+                    const items = await handleUpload(files, 'file');
                     addMediaItems(items);
                     input.value = '';
                   })();
@@ -567,9 +698,28 @@ export default function UploadProjectPage({
               <Button asChild variant="outline"><label htmlFor="file-upload">Upload Files</label></Button>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium mb-2">Attach File via URL</label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  placeholder="Display name"
+                  value={externalFileName}
+                  onChange={(e) => setExternalFileName(e.target.value)}
+                />
+                <Input
+                  placeholder="https://example.com/your-file"
+                  value={externalFileUrl}
+                  onChange={(e) => setExternalFileUrl(e.target.value)}
+                />
+                <Button type="button" onClick={addExternalFile}>
+                  Attach
+                </Button>
+              </div>
+            </div>
+
             {/* Sortable gallery */}
             <div className="grid sm:grid-cols-2 gap-4">
-              {projectData.media
+              {[...projectData.media]
                 .sort((a,b)=>a.order-b.order)
                 .map((m, idx) => (
                 <div
@@ -641,45 +791,48 @@ export default function UploadProjectPage({
               </div>
             </div>
 
-            {editMode && (
-              <div>
-                <label className="block text-sm font-medium mb-2">Collaborators</label>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter email or username to invite collaborator"
-                      value={newCollaborator}
-                      onChange={(e) => setNewCollaborator(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addCollaborator()}
-                    />
-                    <Button onClick={addCollaborator} size="sm">
-                      <Plus className="w-4 h-4" />
-                      Invite
-                    </Button>
-                  </div>
-                  
-                  {projectData.collaborators.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Current Collaborators:</p>
-                      <div className="space-y-2">
-                        {projectData.collaborators.map(collaborator => (
-                          <div key={collaborator} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                            <span className="text-sm">{collaborator}</span>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => removeCollaborator(collaborator)}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+            <div>
+              <label className="block text-sm font-medium mb-2">Collaborators</label>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    placeholder="Enter email or username to invite collaborator"
+                    value={newCollaborator}
+                    onChange={(e) => setNewCollaborator(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addCollaborator()}
+                  />
+                  <Button onClick={addCollaborator} size="sm" className="sm:w-auto">
+                    <Plus className="w-4 h-4" />
+                    Invite
+                  </Button>
                 </div>
+
+                {projectData.collaborators.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Current Collaborators:</p>
+                    <div className="space-y-2">
+                      {projectData.collaborators.map(collaborator => (
+                        <div key={collaborator.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="text-sm">
+                            <span className="font-medium">{collaborator.name}</span>
+                            {collaborator.email && (
+                              <span className="text-xs text-gray-500 block">{collaborator.email}</span>
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeCollaborator(collaborator.id)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <div className="bg-blue-50 p-4 rounded-lg">
               <h3 className="font-medium text-blue-900 mb-2">Project Guidelines</h3>
@@ -688,7 +841,9 @@ export default function UploadProjectPage({
                 <li>• Include clear documentation and setup instructions</li>
                 <li>• Use appropriate tags to help others discover your project</li>
                 <li>• Consider adding a demo or live link if applicable</li>
-                {editMode && <li>• Collaborators will have edit access to this project</li>}
+                {projectData.collaborators.length > 0 && (
+                  <li>• Collaborators will have edit access to this project</li>
+                )}
               </ul>
             </div>
           </div>
