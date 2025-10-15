@@ -2,7 +2,7 @@ import { Badge } from './ui/badge';
 import { Card, CardContent, CardFooter } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Heart, Download, Eye } from 'lucide-react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { SupabaseImage } from './figma/SupabaseImage';
 
 interface ProjectCardProps {
   project: {
@@ -35,10 +35,11 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
       onClick={() => onClick(project.id)}
     >
       <div className="relative overflow-hidden rounded-t-lg">
-        <ImageWithFallback
-          src={project.cover_image || project.thumbnail || '/placeholder-project.jpg'}
+        <SupabaseImage
+          src={project.cover_image || project.thumbnail || ''}
           alt={project.title}
           className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
+          fallbackSrc="/placeholder-project.jpg"
         />
         {project.featured && (
           <Badge className="absolute top-2 left-2 bg-primary text-primary-foreground">

@@ -13,10 +13,18 @@ import { Toaster } from './components/ui/sonner';
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from './utils/supabase/info';
 
-// Initialize Supabase client
+// Initialize Supabase client with proper auth persistence
 const supabase = createClient(
   `https://${projectId}.supabase.co`,
-  publicAnonKey
+  publicAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce'
+    }
+  }
 );
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
@@ -43,6 +51,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject }: {
       onBack={() => navigate('/')}
       currentUser={currentUser}
       onEditProject={onEditProject}
+      supabase={supabase}
     />
   );
 }

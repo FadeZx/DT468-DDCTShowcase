@@ -5,7 +5,7 @@ import { ProjectCard } from './ProjectCard';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Calendar, Users, Trophy, ArrowRight } from 'lucide-react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { SupabaseImage } from './figma/SupabaseImage';
 import { FallingSymbols } from './FallingSymbols';
 import { SteamLikeFeatured } from './SteamLikeFeatured';
 
@@ -198,10 +198,11 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
             <CardContent className="space-y-3">
               {recentProjects.slice(0, 5).map((project) => (
                 <div key={project.id} className="flex items-center gap-3">
-                  <ImageWithFallback
-                    src={project.thumbnail}
+                  <SupabaseImage
+                    src={project.thumbnail || ''}
                     alt={project.title}
                     className="w-10 h-10 rounded object-cover"
+                    fallbackSrc="/placeholder-project.jpg"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{project.title}</p>

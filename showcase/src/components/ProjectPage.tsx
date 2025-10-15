@@ -9,23 +9,17 @@ import {
   ArrowLeft, Download, Heart, Share2, Eye, Calendar, 
   Github, ExternalLink, Play, Users, Edit 
 } from 'lucide-react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-);
+import { SupabaseImage } from './figma/SupabaseImage';
 
 interface ProjectPageProps {
   project: any;
   onBack: () => void;
   currentUser: any;
   onEditProject?: (projectId: string) => void;
+  supabase: any;
 }
 
-export function ProjectPage({ project, onBack, currentUser, onEditProject }: ProjectPageProps) {
+export function ProjectPage({ project, onBack, currentUser, onEditProject, supabase }: ProjectPageProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [projectFiles, setProjectFiles] = useState<any[]>([]);
@@ -40,8 +34,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject }: Pro
       const { data: files, error } = await supabase
         .from('project_files')
         .select('*')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false });
+        .eq('project_id', project.id);
 
       if (error) {
         console.error('Error loading project files:', error);
@@ -112,10 +105,12 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject }: Pro
           {/* Media Gallery */}
           <Card>
             <CardContent className="p-0">
-              <ImageWithFallback
-                src={project.cover_image || '/placeholder-project.jpg'}
+              <SupabaseImage
+                src={project.cover_image || ''}
                 alt={project.title}
                 className="w-full h-80 object-cover rounded-lg"
+                fallbackSrc="/placeholder-project.jpg"
+                supabase={supabase}
               />
             </CardContent>
           </Card>
@@ -199,10 +194,12 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject }: Pro
                     <Card key={index}>
                       <CardContent className="p-0">
                         {file.file_type === 'image' ? (
-                          <ImageWithFallback
+                          <SupabaseImage
                             src={file.file_url}
                             alt={file.file_name}
                             className="w-full h-48 object-cover rounded-lg"
+                            fallbackSrc="/placeholder-project.jpg"
+                            supabase={supabase}
                           />
                         ) : (
                           <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">

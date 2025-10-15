@@ -3,7 +3,15 @@ import { projectId, publicAnonKey } from './supabase/info';
 
 const supabase = createClient(
   `https://${projectId}.supabase.co`,
-  publicAnonKey
+  publicAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce'
+    }
+  }
 );
 
 export interface FileUploadOptions {
