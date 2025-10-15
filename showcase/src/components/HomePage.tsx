@@ -19,19 +19,29 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
   const featuredProjects = projects.filter(p => p.featured).slice(0, 3);
   const recentProjects = projects.slice(0, 8);
-  
-  const categories = [
-    { id: 'all', name: 'All Projects', count: projects.length },
-    { id: 'games', name: 'Games', count: projects.filter(p => p.category === 'Games').length },
-    { id: 'animations', name: 'Animations', count: projects.filter(p => p.category === 'Animations').length },
-    { id: 'arts', name: 'Digital Art', count: projects.filter(p => p.category === 'Digital Art').length },
-    { id: 'simulations', name: 'Simulations', count: projects.filter(p => p.category === 'Simulations').length },
-    { id: 'others', name: 'Others', count: projects.filter(p => p.category === 'Others').length },
-  ];
 
-  const filteredProjects = selectedCategory === 'all' 
-    ? projects 
-    : projects.filter(p => p.category.toLowerCase() === selectedCategory);
+  const formatCategoryId = (category: string) =>
+    (category || 'Uncategorized').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  const categoryMap = new Map<string, { id: string; name: string; count: number }>();
+  categoryMap.set('all', { id: 'all', name: 'All Projects', count: projects.length });
+
+  projects.forEach(project => {
+    const name = project.category || 'Uncategorized';
+    const id = formatCategoryId(name);
+    const existing = categoryMap.get(id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      categoryMap.set(id, { id, name, count: 1 });
+    }
+  });
+
+  const categories = Array.from(categoryMap.values());
+
+  const filteredProjects = selectedCategory === 'all'
+    ? projects
+    : projects.filter(p => formatCategoryId(p.category) === selectedCategory);
 
   const upcomingEvents = [
     {

@@ -25,14 +25,16 @@ interface MyProjectsPageProps {
   onNavigate: (page: string) => void;
   onEditProject: (projectId: string) => void;
   onViewProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
 }
 
-export default function MyProjectsPage({ 
-  currentUser, 
+export default function MyProjectsPage({
+  currentUser,
   projects,
-  onNavigate, 
-  onEditProject, 
-  onViewProject 
+  onNavigate,
+  onEditProject,
+  onViewProject,
+  onDeleteProject
 }: MyProjectsPageProps) {
   const [filter, setFilter] = useState<'all' | 'published' | 'draft' | 'under-review'>('all');
   
@@ -55,8 +57,7 @@ export default function MyProjectsPage({
 
   const handleDeleteProject = (projectId: string) => {
     if (confirm('Are you sure you want to delete this project?')) {
-      // Handle delete logic here
-      console.log('Deleting project:', projectId);
+      onDeleteProject(projectId);
     }
   };
 
@@ -175,15 +176,13 @@ export default function MyProjectsPage({
                 
                 <CardContent>
                   {/* Thumbnail */}
-                  {project.cover_image && (
-                    <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                      <img 
-                        src={project.cover_image} 
-                        alt={project.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
+                <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                  <img
+                    src={project.cover_image || '/placeholder-project.jpg'}
+                    alt={project.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
 
                   {/* Description */}
                   <p className="text-sm text-gray-600 line-clamp-3 mb-4">

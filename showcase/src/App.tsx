@@ -28,10 +28,11 @@ const supabase = createClient(
 );
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
-function ProjectPageWrapper({ projects, currentUser, onEditProject }: { 
-  projects: any[]; 
-  currentUser: any; 
-  onEditProject: (projectId: string) => void; 
+function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject }: {
+  projects: any[];
+  currentUser: any;
+  onEditProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -51,7 +52,23 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject }: {
       onBack={() => navigate('/')}
       currentUser={currentUser}
       onEditProject={onEditProject}
+      onDeleteProject={onDeleteProject}
       supabase={supabase}
+    />
+  );
+}
+
+function ProjectEditorWrapper({ currentUser, onProjectUpdated }: {
+  currentUser: any;
+  onProjectUpdated: () => void;
+}) {
+  const { projectId } = useParams<{ projectId: string }>();
+
+  return (
+    <UploadProjectPage
+      currentUser={currentUser}
+      projectId={projectId}
+      onProjectUpdated={onProjectUpdated}
     />
   );
 }
@@ -159,32 +176,117 @@ export default function App() {
           setUsersState(usersData || []);
           users = usersData || [];
           
-          // Combine projects with author data
+          const usersById = new Map((usersData || []).map(user => [user.id, user]));
+
+          const projectIds = (projectsData || []).map(project => project.id);
+
+          let projectFiles: any[] = [];
+          if (projectIds.length) {
+            const { data: filesData, error: filesError } = await supabase
+              .from('project_files')
+              .select('*')
+              .in('project_id', projectIds);
+
+            if (filesError) {
+              console.error('Error loading project files:', filesError);
+            } else {
+              projectFiles = filesData || [];
+            }
+          }
+
+          let collaboratorLinks: any[] = [];
+          if (projectIds.length) {
+            const { data: collaboratorsData, error: collaboratorsError } = await supabase
+              .from('project_collaborators')
+              .select('project_id, user_id')
+              .in('project_id', projectIds);
+
+            if (collaboratorsError) {
+              console.warn('Unable to load project collaborators:', collaboratorsError.message);
+            } else {
+              collaboratorLinks = collaboratorsData || [];
+            }
+          }
+
+          const filesByProject = new Map<string, any[]>();
+          projectFiles.forEach(file => {
+            const list = filesByProject.get(file.project_id) || [];
+            list.push(file);
+            filesByProject.set(file.project_id, list);
+          });
+
+          const collaboratorsByProject = new Map<string, string[]>();
+          collaboratorLinks.forEach(link => {
+            const list = collaboratorsByProject.get(link.project_id) || [];
+            list.push(link.user_id);
+            collaboratorsByProject.set(link.project_id, list);
+          });
+
           const projectsWithAuthors = (projectsData || []).map(project => {
-            const author = usersData?.find(user => user.id === project.author_id);
+            const authorProfile = usersById.get(project.author_id);
+            const files = filesByProject.get(project.id) || [];
+            const coverFromFiles = files.find((file: any) => file.is_cover) || files.find((file: any) => file.file_type === 'image');
+
+            const coverImage = (() => {
+              if (project.cover_image && project.cover_image.startsWith('http')) {
+                return project.cover_image;
+              }
+              if (project.cover_image && project.cover_image.startsWith('projects/')) {
+                const { data } = supabase.storage
+                  .from('project-files')
+                  .getPublicUrl(project.cover_image);
+                return data.publicUrl;
+              }
+              return coverFromFiles?.file_url || null;
+            })();
+
+            const media = {
+              all: files,
+              images: files.filter((file: any) => file.file_type === 'image'),
+              videos: files.filter((file: any) => file.file_type === 'video'),
+              downloads: files.filter((file: any) => file.file_type === 'project' || file.file_type === 'document')
+            };
+
+            const collaboratorProfiles = (collaboratorsByProject.get(project.id) || [])
+              .map(id => {
+                const profile = usersById.get(id);
+                return profile ? {
+                  id: profile.id,
+                  name: profile.name || 'Unknown',
+                  email: profile.email || '',
+                  avatar: profile.avatar || null
+                } : { id, name: 'Unknown', email: '', avatar: null };
+              });
+
+            const tags = Array.isArray(project.tags)
+              ? project.tags
+              : (typeof project.tags === 'string'
+                ? project.tags.split(',').map((t: string) => t.trim())
+                : []);
+
             return {
               ...project,
-              author: author ? {
-                name: author.name || 'Unknown',
-                avatar: author.avatar,
-                year: author.year || 'Unknown'
+              cover_image: coverImage,
+              author: authorProfile ? {
+                name: authorProfile.name || 'Unknown',
+                avatar: authorProfile.avatar,
+                year: authorProfile.year || 'Unknown'
               } : {
                 name: 'Unknown',
                 avatar: null,
                 year: 'Unknown'
               },
-              // Ensure stats object exists
               stats: {
                 views: project.views || 0,
                 downloads: project.downloads || 0,
                 likes: project.likes || 0
               },
-              // Ensure tags is an array
-              tags: Array.isArray(project.tags) ? project.tags : 
-                    (typeof project.tags === 'string' ? project.tags.split(',').map((t: string) => t.trim()) : [])
+              tags,
+              media,
+              collaborators: collaboratorProfiles
             };
           });
-          
+
           setProjects(projectsWithAuthors);
         }
       }
@@ -238,8 +340,45 @@ export default function App() {
     navigate(`/users/${userId}`);
   };
 
-  const handleBackFromProject = () => {
-    navigate('/');
+  const handleDeleteProject = async (projectIdToDelete: string) => {
+    try {
+      const { data: fileRecords, error: fileError } = await supabase
+        .from('project_files')
+        .select('file_path')
+        .eq('project_id', projectIdToDelete);
+
+      if (fileError) {
+        console.warn('Unable to load project file metadata for deletion:', fileError.message);
+      } else if (fileRecords) {
+        const storagePaths = fileRecords
+          .map(record => record.file_path)
+          .filter((path: string | null): path is string => !!path && path.startsWith('projects/'));
+        if (storagePaths.length) {
+          const { error: storageError } = await supabase.storage
+            .from('project-files')
+            .remove(storagePaths);
+          if (storageError) {
+            console.warn('Failed to remove some storage files:', storageError.message);
+          }
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectIdToDelete);
+
+      if (deleteError) throw deleteError;
+
+      await loadData();
+
+      if (location.pathname === `/projects/${projectIdToDelete}`) {
+        navigate('/');
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      alert('Failed to delete project. Please try again.');
+    }
   };
 
   return (
@@ -268,18 +407,19 @@ export default function App() {
             } />
             
             <Route path="/projects/:projectId" element={
-              <ProjectPageWrapper 
+              <ProjectPageWrapper
                 projects={projects}
                 currentUser={currentUser}
                 onEditProject={(projectId: string) => {
                   navigate(`/projects/${projectId}/edit`);
                 }}
+                onDeleteProject={handleDeleteProject}
               />
             } />
-            
+
             <Route path="/projects/:projectId/edit" element={
               currentUser?.role === 'student' ? (
-                <UploadProjectPage 
+                <ProjectEditorWrapper
                   currentUser={currentUser}
                   onProjectUpdated={loadData}
                 />
@@ -344,7 +484,7 @@ export default function App() {
             
             <Route path="/my-projects" element={
               currentUser?.role === 'student' ? (
-                <MyProjectsPage 
+                <MyProjectsPage
                   currentUser={currentUser}
                   projects={projects}
                   onNavigate={handleNavigate}
@@ -352,6 +492,7 @@ export default function App() {
                     navigate(`/projects/${projectId}/edit`);
                   }}
                   onViewProject={handleProjectClick}
+                  onDeleteProject={handleDeleteProject}
                 />
               ) : (
                 <div className="max-w-7xl mx-auto px-6 py-8">
