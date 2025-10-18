@@ -24,6 +24,7 @@ interface UploadProjectPageProps {
   projectId?: string;
   onProjectCreated?: () => void;
   onProjectUpdated?: () => void;
+  initialProject?: any;
 }
 
 type MediaType = 'image' | 'video' | 'file';
@@ -91,7 +92,8 @@ export default function UploadProjectPage({
   currentUser,
   projectId: editProjectId,
   onProjectCreated,
-  onProjectUpdated
+  onProjectUpdated,
+  initialProject
 }: UploadProjectPageProps = {}) {
   const editMode = !!editProjectId;
   const [projectFolderId] = useState(() => editProjectId || generateUUID());
@@ -122,9 +124,51 @@ export default function UploadProjectPage({
   // Load existing project data in edit mode
   useEffect(() => {
     if (editMode && editProjectId) {
+      // In demo/mock mode, if we have an initial project from in-memory state, use it and skip fetch
+      if (initialProject) {
+        const tags = Array.isArray(initialProject.tags)
+          ? initialProject.tags
+          : initialProject.tags
+            ? String(initialProject.tags).split(',').map((t: string) => t.trim())
+            : [];
+        const mediaItems: MediaItem[] = [];
+        if (initialProject.thumbnail) {
+          mediaItems.push({
+            id: generateUUID(),
+            type: 'image',
+            name: 'Cover',
+            url: initialProject.thumbnail,
+            path: `external:${initialProject.thumbnail}`,
+            fileType: 'image',
+            source: 'external',
+            isCover: true,
+            order: 0
+          });
+        }
+        const collaboratorEntries: Collaborator[] = Array.isArray(initialProject.collaborators)
+          ? initialProject.collaborators.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              email: c.email || ''
+            }))
+          : [];
+        setProjectData(prev => ({
+          ...prev,
+          title: initialProject.title || '',
+          shortDescription: initialProject.description || '',
+          fullDescription: initialProject.longDescription || '',
+          category: initialProject.category || '',
+          tags,
+          isPublic: true,
+          media: mediaItems,
+          collaborators: collaboratorEntries
+        }));
+        setLoading(false);
+        return;
+      }
       loadProjectData();
     }
-  }, [editMode, editProjectId]);
+  }, [editMode, editProjectId, initialProject]);
 
   const loadProjectData = async () => {
     setLoading(true);
@@ -217,7 +261,48 @@ export default function UploadProjectPage({
       }
     } catch (error) {
       console.error('Error loading project data:', error);
-      alert('Failed to load project data');
+      // Fallback to initialProject in mock mode if available
+      if (initialProject) {
+        const tags = Array.isArray(initialProject.tags)
+          ? initialProject.tags
+          : initialProject.tags
+            ? String(initialProject.tags).split(',').map((t: string) => t.trim())
+            : [];
+        const mediaItems: MediaItem[] = [];
+        if (initialProject.thumbnail) {
+          mediaItems.push({
+            id: generateUUID(),
+            type: 'image',
+            name: 'Cover',
+            url: initialProject.thumbnail,
+            path: `external:${initialProject.thumbnail}`,
+            fileType: 'image',
+            source: 'external',
+            isCover: true,
+            order: 0
+          });
+        }
+        const collaboratorEntries: Collaborator[] = Array.isArray(initialProject.collaborators)
+          ? initialProject.collaborators.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              email: c.email || ''
+            }))
+          : [];
+        setProjectData(prev => ({
+          ...prev,
+          title: initialProject.title || '',
+          shortDescription: initialProject.description || '',
+          fullDescription: initialProject.longDescription || '',
+          category: initialProject.category || '',
+          tags,
+          isPublic: true,
+          media: mediaItems,
+          collaborators: collaboratorEntries
+        }));
+      } else {
+        alert('Failed to load project data');
+      }
     } finally {
       setLoading(false);
     }

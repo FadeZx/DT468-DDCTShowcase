@@ -16,12 +16,11 @@ import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
-function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject, supabase }: {
+function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject }: {
   projects: any[];
   currentUser: any;
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
-  supabase: any;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -42,7 +41,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
       currentUser={currentUser}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
-      supabase={supabase}
+
     />
   );
 }
@@ -52,12 +51,15 @@ function ProjectEditorWrapper({ currentUser, onProjectUpdated }: {
   onProjectUpdated: () => void;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
+  // Find the project from in-memory list to support mock/demo mode
+  const initialProject = projects.find((p: any) => p.id === projectId);
 
   return (
     <UploadProjectPage
       currentUser={currentUser}
       projectId={projectId}
       onProjectUpdated={onProjectUpdated}
+      initialProject={initialProject}
     />
   );
 }
@@ -134,7 +136,7 @@ export default function App() {
         category: 'Animation',
         featured: true,
         created_at: '2024-01-10T14:30:00Z',
-        author_id: 'student-2',
+        author_id: 'student-1',
         cover_image: '/placeholder-project.svg',
         views: 89,
         downloads: 12,
@@ -169,6 +171,7 @@ export default function App() {
       return {
         ...project,
         author: author ? {
+          id: author.id,
           name: author.name,
           avatar: author.avatar,
           year: author.year

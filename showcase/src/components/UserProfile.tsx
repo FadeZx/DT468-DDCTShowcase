@@ -83,6 +83,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
               ) : (
                 <>
                   <h1 className="text-2xl font-bold mb-2">{user.name}</h1>
+                  <p className="text-xs text-muted-foreground -mt-1 mb-2 break-all">ID: {user.id}</p>
                   <Badge className="mb-4 bg-primary text-primary-foreground">
                     {user.year} Student
                   </Badge>
