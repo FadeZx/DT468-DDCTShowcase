@@ -195,7 +195,19 @@ export default function App() {
       };
     });
 
-    setProjects(processedProjects);
+    // Merge session demo projects if present
+    let sessionProjects: any[] = [];
+    try {
+      const raw = sessionStorage.getItem('demoProjects');
+      sessionProjects = raw ? JSON.parse(raw) : [];
+    } catch {}
+
+    const combinedProjects = [
+      ...processedProjects,
+      ...sessionProjects
+    ];
+
+    setProjects(combinedProjects);
     setUsersState(mockUsersData);
     users = mockUsersData;
     setLoading(false);

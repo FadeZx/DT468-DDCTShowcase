@@ -1,18 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from './supabase/info';
-
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce'
-    }
-  }
-);
+import supabase from './supabase/client';
+// IMPORTANT: Reuse the app's singleton Supabase client to avoid multiple GoTrueClient instances
 
 export interface FileUploadOptions {
   projectId: string;
@@ -69,8 +56,10 @@ export async function uploadProjectFile({
     const filePath = generateFilePath(projectId, fileType, fileId, extension);
 
     // Upload original file
+    const bucket = 'project-files';
+    // Ensure bucket exists (if not, the upload will fail with 400). Consider creating it in Supabase dashboard.
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('project-files')
+      .from(bucket)
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false
@@ -82,7 +71,7 @@ export async function uploadProjectFile({
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('project-files')
+      .from(bucket)
       .getPublicUrl(filePath);
 
     const result: FileUploadResult = {
@@ -102,7 +91,7 @@ export async function uploadProjectFile({
         const thumbnailPath = generateFilePath(projectId, 'thumbnail', fileId, extension);
         
         const { error: thumbError } = await supabase.storage
-          .from('project-files')
+          .from(bucket)
           .upload(thumbnailPath, thumbnailFile, {
             cacheControl: '3600',
             upsert: false
@@ -110,7 +99,7 @@ export async function uploadProjectFile({
 
         if (!thumbError) {
           const { data: thumbUrlData } = supabase.storage
-            .from('project-files')
+            .from(bucket)
             .getPublicUrl(thumbnailPath);
           
           result.thumbnailUrl = thumbUrlData.publicUrl;
@@ -163,8 +152,9 @@ async function createThumbnail(file: File, maxWidth: number): Promise<File> {
 
 export async function deleteProjectFile(filePath: string) {
   try {
+    const bucket = 'project-files';
     const { error } = await supabase.storage
-      .from('project-files')
+      .from(bucket)
       .remove([filePath]);
 
     if (error) {
@@ -179,8 +169,9 @@ export async function deleteProjectFile(filePath: string) {
 }
 
 export function getFileUrl(filePath: string): string {
+  const bucket = 'project-files';
   const { data } = supabase.storage
-    .from('project-files')
+    .from(bucket)
     .getPublicUrl(filePath);
   
   return data.publicUrl;

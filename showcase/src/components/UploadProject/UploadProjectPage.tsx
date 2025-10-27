@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea-simple';
 import { Badge } from '../ui/badge-simple';
 import { Progress } from '../ui/progress-simple';
-import supabase from '../../utils/supabase/client.js';
+import supabase from '../../utils/supabase/client';
 import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 import {
   Upload,
@@ -43,6 +43,7 @@ interface MediaItem {
   mimeType?: string;
   fileType?: string;
   source?: MediaSource;
+  status?: 'uploading' | 'uploaded' | 'error';
 }
 
 interface Collaborator {
@@ -96,6 +97,7 @@ export default function UploadProjectPage({
   initialProject
 }: UploadProjectPageProps = {}) {
   const editMode = !!editProjectId;
+  const demoMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
   const [projectFolderId] = useState(() => editProjectId || generateUUID());
   const [currentStep, setCurrentStep] = useState(1);
   const [projectData, setProjectData] = useState<ProjectData>({
@@ -309,9 +311,7 @@ export default function UploadProjectPage({
   };
 
   const handleNext = () => {
-    if (currentStep < STEPS.length) {
-      setCurrentStep(currentStep + 1);
-    }
+    setCurrentStep((prev) => Math.min(prev + 1, STEPS.length));
   };
 
   const handlePrevious = () => {
@@ -369,31 +369,64 @@ export default function UploadProjectPage({
   };
 
   const handleUpload = async (files: FileList | null, kind: 'image' | 'file') => {
-    if (!files?.length) return [];
-    const results: MediaItem[] = [];
-    for (const file of Array.from(files)) {
-      const uploadResult = await uploadProjectFile({
-        projectId: projectFolderId,
-        fileType: kind === 'image' ? 'image' : 'document',
-        file
-      });
-      const saved = uploadResult.filePath;
-      const url = uploadResult.fileUrl;
-      results.push({
-        id: generateUUID(),
-        type: kind,
-        name: file.name,
-        url,
-        path: saved,
-        size: file.size,
-        mimeType: uploadResult.mimeType,
-        fileType: kind === 'image' ? 'image' : 'document',
-        source: 'storage',
-        isCover: false,
-        order: projectData.media.length + results.length
-      });
+    if (!files?.length) return [] as MediaItem[];
+
+    // 1) Immediately add placeholder entries with status 'uploading' so UI shows progress
+    const placeholderItems: MediaItem[] = Array.from(files).map((file, idx) => ({
+      id: generateUUID(),
+      type: kind === 'image' ? 'image' : 'file',
+      name: file.name,
+      url: demoMode ? URL.createObjectURL(file) : '/placeholder-project.svg',
+      path: null,
+      order: projectData.media.length + idx,
+      size: file.size,
+      mimeType: file.type,
+      fileType: kind === 'image' ? 'image' : 'document',
+      source: demoMode ? 'local' : 'storage',
+      status: 'uploading',
+    }));
+    addMediaItems(placeholderItems);
+
+    // 2) Perform actual upload (or finalize demo object URLs), then update status and URLs
+    const uploadedItems: MediaItem[] = [];
+    for (let i = 0; i < placeholderItems.length; i++) {
+      const file = Array.from(files)[i];
+      const placeholder = placeholderItems[i];
+      try {
+        if (demoMode) {
+          // Already have an object URL; mark as uploaded
+          uploadedItems.push({ ...placeholder, status: 'uploaded' });
+        } else {
+          const uploadResult = await uploadProjectFile({
+            projectId: projectFolderId,
+            fileType: kind === 'image' ? 'image' : 'document',
+            file,
+          });
+          uploadedItems.push({
+            ...placeholder,
+            url: uploadResult.fileUrl,
+            path: uploadResult.filePath,
+            mimeType: uploadResult.mimeType,
+            source: 'storage',
+            status: 'uploaded',
+          });
+        }
+      } catch (err) {
+        console.error('Upload failed', err);
+        uploadedItems.push({ ...placeholder, status: 'error' });
+      }
     }
-    return results;
+
+    // 3) Replace placeholders with uploaded items by id
+    setProjectData(prev => ({
+      ...prev,
+      media: prev.media.map(m => {
+        const updated = uploadedItems.find(u => u.id === m.id);
+        return updated ? updated : m;
+      }).map((m, i) => ({ ...m, order: i }))
+    }));
+
+    return uploadedItems;
   };
 
   const toEmbedURL = (raw: string) => {
@@ -541,6 +574,7 @@ export default function UploadProjectPage({
 
       const projectRecord = {
         ...(editMode ? {} : { id: targetProjectId }),
+        id: targetProjectId,
         title: projectData.title,
         description: projectData.shortDescription,
         long_description: projectData.fullDescription,
@@ -550,8 +584,24 @@ export default function UploadProjectPage({
         tags: projectData.tags,
         status: projectData.isPublic ? 'published' : 'draft',
         price: projectData.price || 0,
-        cover_image: cover?.url || null
+        cover_image: cover?.url || null,
+        media: projectData.media
       };
+
+      // Demo mode: save to sessionStorage and skip Supabase
+      if (demoMode) {
+        const key = 'demoProjects';
+        const raw = sessionStorage.getItem(key);
+        const list = raw ? JSON.parse(raw) : [];
+        const filtered = list.filter((p: any) => p.id !== targetProjectId);
+        const toSave = [...filtered, projectRecord];
+        sessionStorage.setItem(key, JSON.stringify(toSave));
+        alert(editMode ? 'Project updated (demo)!' : 'Project created (demo)!');
+        onProjectUpdated?.();
+        onProjectCreated?.();
+        window.location.href = '/?demo=1';
+        return;
+      }
 
       if (editMode && editProjectId) {
         const { error: projectError } = await supabase
@@ -741,8 +791,7 @@ export default function UploadProjectPage({
                   const input = e.currentTarget;
                   const files = e.target.files;
                   (async () => {
-                    const items = await handleUpload(files, 'image');
-                    addMediaItems(items);
+                    await handleUpload(files, 'image');
                     input.value = '';
                   })();
                 }}
@@ -769,8 +818,7 @@ export default function UploadProjectPage({
                   const input = e.currentTarget;
                   const files = e.target.files;
                   (async () => {
-                    const items = await handleUpload(files, 'file');
-                    addMediaItems(items);
+                    await handleUpload(files, 'file');
                     input.value = '';
                   })();
                 }}
@@ -810,7 +858,7 @@ export default function UploadProjectPage({
                   onDrop={(e)=>{ const from = Number(e.dataTransfer.getData('text/plain')); moveMedia(from, idx); }}
                   className="p-3 rounded-lg border bg-white flex gap-3 items-start"
                 >
-                  <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center">
+                  <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center relative">
                     {m.type === 'image' ? (
                       <img 
                         src={m.url || '/placeholder-project.svg'} 
@@ -822,15 +870,26 @@ export default function UploadProjectPage({
                     ) : (
                       <span className="text-xs">File</span>
                     )}
+                    {m.status === 'uploading' && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    {m.status === 'error' && (
+                      <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center text-white text-xs">
+                        Failed
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 text-sm">
                       <Badge variant="secondary">{m.type}</Badge>
                       {m.isCover && <Badge>Cover</Badge>}
+                      {m.status && <Badge variant="outline">{m.status}</Badge>}
                     </div>
                     <div className="text-xs text-gray-600 truncate">{m.name || m.url}</div>
                     <div className="flex gap-2 mt-2">
-                      {m.type !== 'file' && (
+                      {m.type === 'image' && (
                         <Button size="sm" variant="outline" onClick={()=>setAsCover(m.id)}>
                           Set as cover
                         </Button>
@@ -1004,9 +1063,8 @@ export default function UploadProjectPage({
       case 1:
         return projectData.title && projectData.shortDescription && projectData.category;
       case 2: {
-        const hasImage = projectData.media.some(m => m.type === 'image');
-        const hasPlayableOrFile = projectData.media.some(m => m.type === 'file' || m.type === 'video');
-        return hasImage && hasPlayableOrFile;
+        // Allow proceeding even without media in Step 2 to unblock uploads; we'll warn at publish time if needed
+        return true;
       }
       case 3:
         return true;
@@ -1095,7 +1153,18 @@ export default function UploadProjectPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {renderStepContent()}
+            {(() => {
+              try {
+                return renderStepContent();
+              } catch (err) {
+                console.error('Step render error:', err);
+                return (
+                  <div className="p-4 text-red-600">
+                    Something went wrong loading this step. Please try again or reload.
+                  </div>
+                );
+              }
+            })()}
           </CardContent>
         </Card>
 
