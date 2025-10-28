@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge-simple';
+import supabase from '../../utils/supabase/client';
 import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { 
   Plus, 
   Edit, 
@@ -43,11 +43,7 @@ interface AccountManagementProps {
   onAccountCreated?: () => void;
 }
 
-// Initialize Supabase client for regular operations
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-);
+// Use app-wide Supabase client instance for regular operations
 
 export function AccountManagement({ onAccountCreated }: AccountManagementProps) {
   const [users, setUsers] = useState<User[]>([]);
@@ -127,7 +123,8 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       // Create admin client with service role key
       const adminClient = createClient(
         `https://${projectId}.supabase.co`,
-        serviceRoleKey
+        serviceRoleKey,
+        { auth: { persistSession: false, autoRefreshToken: false } }
       );
 
       // Create user in Supabase Auth
@@ -218,7 +215,8 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       // Create admin client with service role key
       const adminClient = createClient(
         `https://${projectId}.supabase.co`,
-        serviceRoleKey
+        serviceRoleKey,
+        { auth: { persistSession: false, autoRefreshToken: false } }
       );
 
       // Delete from profiles table first

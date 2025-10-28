@@ -3,8 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Badge } from '../ui/badge-simple';
-import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import supabase from '../../utils/supabase/client';
 import { 
   Lock, 
   Eye, 
@@ -22,11 +21,7 @@ interface AccountSettingsProps {
   onClose?: () => void;
 }
 
-// Initialize Supabase client
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-);
+
 
 export function AccountSettings({ user, onClose }: AccountSettingsProps) {
   const [passwordForm, setPasswordForm] = useState({

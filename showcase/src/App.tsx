@@ -1,5 +1,5 @@
 import { Header } from './components/Header';
-import { RoleSelector, mockUsers } from './components/RoleSelector';
+import { AuthDialog } from './components/AuthDialog';
 import { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { HomePage } from './components/HomePage';
@@ -14,6 +14,7 @@ import { Toaster } from './components/ui/sonner';
 import { EventsPage } from './components/EventsPage';
 import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
+import supabase from './utils/supabase/client';
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
 function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject }: {
@@ -105,9 +106,9 @@ export default function App() {
   const [projects, setProjects] = useState<any[]>([]);
   const [usersState, setUsersState] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showRoleSelector, setShowRoleSelector] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
 
-  // Mock data for demo
+  // Load mock UI data for catalogs; auth is real via Supabase
   useEffect(() => {
     loadMockData();
   }, []);
@@ -213,19 +214,44 @@ export default function App() {
     setLoading(false);
   };
 
-  const handleRoleSelected = (role: 'admin' | 'student' | 'guest') => {
-    setCurrentUser(mockUsers[role]);
-    console.log(`Selected role: ${role}`);
+  // Auth helpers
+  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student: 'student1@ddct.edu.th' };
+
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (error) throw error;
+    return data;
   };
 
-  const handleLogout = () => {
+  const signInWithEmail = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    const profile = await fetchProfile(data.user.id);
+    setCurrentUser(profile);
+    return profile;
+  };
+
+  useEffect(() => {
+    // Restore session if exists
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) {
+        try {
+          const profile = await fetchProfile(data.user.id);
+          setCurrentUser(profile);
+        } catch {}
+      }
+    })();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    setShowRoleSelector(true);
     navigate('/');
   };
 
   const handleLogin = () => {
-    setShowRoleSelector(true);
+    setShowAuth(true);
   };
 
   const handleNavigate = (path: string) => {
@@ -275,10 +301,12 @@ export default function App() {
           </div>
         ) : (
           <>
-            <RoleSelector
-              isOpen={showRoleSelector && !currentUser}
-              onClose={() => setShowRoleSelector(false)}
-              onRoleSelected={handleRoleSelected}
+            <AuthDialog
+              isOpen={showAuth && !currentUser}
+              onClose={() => setShowAuth(false)}
+              onSignedIn={() => setShowAuth(false)}
+              signInWithEmail={signInWithEmail}
+              quickLoginEmails={quickLoginEmails}
             />
             <Routes>
               <Route path="/" element={
@@ -301,7 +329,7 @@ export default function App() {
               } />
 
               <Route path="/projects/:projectId/edit" element={
-                currentUser?.role === 'student' ? (
+                currentUser?.role === 'student' || currentUser?.role === 'admin' ? (
                   <ProjectEditorWrapper
                     currentUser={currentUser}
                     onProjectUpdated={loadData}
