@@ -42,7 +42,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
       currentUser={currentUser}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
-
+      supabase={supabase}
     />
   );
 }
@@ -108,10 +108,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
 
-  // Load mock UI data first; then merge real projects from Supabase
+  // Load only real projects from Supabase (remove mock templates)
   useEffect(() => {
-    loadMockData();
-    // Then fetch real projects and merge
     (async () => {
       try {
         const { data: rows, error } = await supabase
@@ -129,17 +127,42 @@ export default function App() {
             .in('id', ownerIds);
           owners = profiles || [];
         }
+        // Fetch candidate cover images for all projects in one query, prefer is_cover then earliest image
+        const projectIds = (rows || []).map(r => r.id);
+        let coverMap: Record<string, string> = {};
+        if (projectIds.length) {
+          const { data: files } = await supabase
+            .from('project_files')
+            .select('project_id,file_url,file_path,file_type,is_cover,created_at')
+            .in('project_id', projectIds)
+            .eq('file_type', 'image')
+            .order('created_at', { ascending: true });
+          const grouped: Record<string, any[]> = {};
+          (files || []).forEach(f => { (grouped[f.project_id] ||= []).push(f); });
+          for (const pid of Object.keys(grouped)) {
+            const arr = grouped[pid];
+            const coverFirst = [...arr].sort((a,b) => (b.is_cover?1:0)-(a.is_cover?1:0));
+            const chosen = coverFirst[0];
+            if (chosen) {
+              coverMap[pid] = (chosen.file_path?.startsWith('projects/') ? chosen.file_path : '') || chosen.file_url || '';
+            }
+          }
+        }
+
         const supabaseProjects = (rows || []).map(p => {
           const author = owners.find(o => o.id === p.owner_id);
           return {
             id: p.id,
             title: p.title,
             description: p.description,
+            long_description: p.long_description || '',
             category: p.category || 'Uncategorized',
             featured: false,
             created_at: p.created_at,
+            updated_at: p.updated_at,
+            status: p.status || 'published',
             author_id: p.owner_id,
-            cover_image: p.cover_image || '/placeholder-project.svg',
+            cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
             views: 0,
             downloads: 0,
             likes: 0,
@@ -160,116 +183,20 @@ export default function App() {
             members: []
           };
         });
-        setProjects(prev => {
-          const byId = new Map(prev.map(p => [p.id, p]));
-          for (const sp of supabaseProjects) byId.set(sp.id, sp);
-          return Array.from(byId.values());
-        });
+        setProjects(supabaseProjects);
       } catch (e) {
-        console.warn('Failed to load Supabase projects, showing mock only', e);
+        console.warn('Failed to load Supabase projects', e);
+      } finally {
+        setLoading(false);
       }
     })();
   }, []);
 
   const loadMockData = () => {
-    // Mock projects data
-    const mockProjects = [
-      {
-        id: '1',
-        title: 'Fantasy Adventure Game',
-        description: 'A 3D fantasy RPG with immersive storytelling',
-        category: 'Games',
-        featured: true,
-        created_at: '2024-01-15T10:00:00Z',
-        author_id: 'student-1',
-        cover_image: '/placeholder-project.svg',
-        views: 150,
-        downloads: 45,
-        likes: 23,
-        tags: ['RPG', 'Fantasy', '3D']
-      },
-      {
-        id: '2',
-        title: 'Animated Short Film',
-        description: 'A 2D animated story about friendship',
-        category: 'Animation',
-        featured: true,
-        created_at: '2024-01-10T14:30:00Z',
-        author_id: 'student-1',
-        cover_image: '/placeholder-project.svg',
-        views: 89,
-        downloads: 12,
-        likes: 15,
-        tags: ['2D', 'Animation', 'Storytelling']
-      }
-    ];
-
-    // Mock users data
-    const mockUsersData = [
-      {
-        id: 'student-1',
-        name: 'John Doe',
-        email: 'john.doe@ddct.edu',
-        role: 'student',
-        avatar: null,
-        year: '2025'
-      },
-      {
-        id: 'student-2', 
-        name: 'Jane Smith',
-        email: 'jane.smith@ddct.edu',
-        role: 'student',
-        avatar: null,
-        year: '2024'
-      }
-    ];
-
-    // Process projects with mock data
-    const processedProjects = mockProjects.map(project => {
-      const author = mockUsersData.find(u => u.id === project.author_id);
-      return {
-        ...project,
-        author: author ? {
-          id: author.id,
-          name: author.name,
-          avatar: author.avatar,
-          year: author.year
-        } : {
-          name: 'Unknown',
-          avatar: null,
-          year: 'Unknown'
-        },
-        stats: {
-          views: project.views,
-          downloads: project.downloads,
-          likes: project.likes
-        },
-        media: {
-          all: [],
-          images: [],
-          videos: [],
-          downloads: []
-        },
-        collaborators: []
-      };
-    });
-
-    // Merge session demo projects if present
-    let sessionProjects: any[] = [];
-    try {
-      const raw = sessionStorage.getItem('demoProjects');
-      sessionProjects = raw ? JSON.parse(raw) : [];
-    } catch {}
-
-    const combinedProjects = [
-      ...processedProjects,
-      ...sessionProjects
-    ];
-
-    setProjects(combinedProjects);
-    setUsersState(mockUsersData);
-    users = mockUsersData;
-    setLoading(false);
+    // Mock removed; rely on Supabase only.
+    setProjects([]);
+    setUsersState([]);
+    users = [];
   };
 
   // Auth helpers
@@ -338,7 +265,7 @@ export default function App() {
   };
 
   const loadData = () => {
-    loadMockData();
+    // No-op: mock data removed, rely on Supabase-backed refreshes if needed.
   };
 
   return (

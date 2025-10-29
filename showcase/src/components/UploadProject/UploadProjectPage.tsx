@@ -799,34 +799,7 @@ export default function UploadProjectPage({
       case 2:
         return (
           <div className="space-y-6">
-            {/* Cover uploader */}
-            <label className="block text-sm font-medium mb-2">Cover Image (card thumbnail)</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
-              <input
-                id="cover-upload"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  const input = e.currentTarget;
-                  const files = e.target.files;
-                  if (files && files.length) {
-                    const uploaded = await handleUpload(files, 'image');
-                    const first = uploaded[0];
-                    if (first) {
-                      setProjectData(prev => ({ ...prev, coverImage: first }));
-                    }
-                    input.value = '';
-                  }
-                }}
-              />
-              <Button asChild variant="outline"><label htmlFor="cover-upload">Upload Cover</label></Button>
-              {projectData.coverImage && (
-                <div className="mt-3">
-                  <img src={projectData.coverImage.url} alt="Cover" className="w-full max-h-48 object-contain" />
-                </div>
-              )}
-            </div>
+            {/* Cover selection is now part of gallery items below (use the checkbox on an image). */}
 
             {/* Gallery images uploader */}
             <label className="block text-sm font-medium mb-2">Gallery Images</label>
@@ -940,9 +913,14 @@ export default function UploadProjectPage({
                     <div className="text-xs text-gray-600 truncate">{m.name || m.url}</div>
                     <div className="flex gap-2 mt-2">
                       {m.type === 'image' && (
-                        <Button size="sm" variant="outline" onClick={()=>setAsCover(m.id)}>
-                          Set as cover
-                        </Button>
+                        <label className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={!!m.isCover}
+                            onChange={(e)=>{ if(e.target.checked) setAsCover(m.id); }}
+                          />
+                          Cover
+                        </label>
                       )}
                       <Button size="sm" variant="outline" onClick={()=>removeMedia(m.id)}>
                         Remove

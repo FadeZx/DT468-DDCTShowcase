@@ -177,10 +177,11 @@ export default function MyProjectsPage({
                 <CardContent>
                   {/* Thumbnail */}
                 <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                  <img
+                  <SupabaseImage
                     src={project.cover_image || '/placeholder-project.svg'}
                     alt={project.title}
                     className="w-full h-full object-cover"
+                    fallbackSrc="/placeholder-project.svg"
                   />
                 </div>
 

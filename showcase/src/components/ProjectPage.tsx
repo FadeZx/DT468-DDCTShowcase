@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -10,6 +10,8 @@ import {
   Github, ExternalLink, Play, Users, Edit, Trash2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
+import "react-responsive-carousel/lib/styles/carousel.min.css";
+import { Carousel } from 'react-responsive-carousel';
 
 interface ProjectPageProps {
   project: any;
@@ -34,15 +36,29 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     'https://picsum.photos/seed/5/1280/720',
   ];
   const [activeIndex, setActiveIndex] = useState(0);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const attemptedFetchRef = useRef(false);
 
   useEffect(() => {
-    if (project.media?.all || Array.isArray(project.media)) {
-      setProjectFiles(project.media?.all || project.media || []);
+    const providedAll = Array.isArray(project.media?.all) ? project.media.all : null;
+    const providedDirect = Array.isArray(project.media) ? project.media : null;
+    const incoming = providedAll ?? providedDirect ?? null;
+    const incomingLen = Array.isArray(incoming) ? incoming.length : 0;
+
+    if (incoming && incomingLen > 0) {
+      console.log('[ProjectPage] Using provided project.media files:', { projectId: project.id, count: incomingLen, files: incoming });
+      setProjectFiles(incoming);
       setLoading(false);
-    } else {
+    } else if (!attemptedFetchRef.current) {
+      attemptedFetchRef.current = true;
+      console.log('[ProjectPage] No provided media (or empty). Fetching project_files from Supabase for project:', project.id);
       loadProjectFiles();
+    } else {
+      console.warn('[ProjectPage] No media available after fetch.');
+      setProjectFiles([]);
+      setLoading(false);
     }
-  }, [project.id, project.media?.all, Array.isArray(project.media) ? project.media.length : undefined]);
+  }, [project.id, Array.isArray(project.media?.all) ? project.media.all.length : 0, Array.isArray(project.media) ? project.media.length : 0]);
 
   const loadProjectFiles = async () => {
     try {
@@ -53,14 +69,15 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         .eq('project_id', project.id);
 
       if (error) {
-        console.error('Error loading project files:', error);
+        console.error('[ProjectPage] Error loading project files:', error);
         // If table doesn't exist, just set empty array
         setProjectFiles([]);
       } else {
+        console.log('[ProjectPage] Loaded project_files:', { projectId: project.id, count: (files||[]).length, files });
         setProjectFiles(files || []);
       }
     } catch (error) {
-      console.error('Error loading project files:', error);
+      console.error('[ProjectPage] Exception loading project files:', error);
       // If there's any error, set empty array to prevent crashes
       setProjectFiles([]);
     } finally {
@@ -79,7 +96,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   );
 
   // Get media files from project files (images/videos)
-  const mediaFiles = projectFiles.filter(file => file.file_type === 'image' || file.file_type === 'video');
+  const mediaFiles = projectFiles.filter(file => (file.file_type === 'image' || file.file_type === 'video') && ((file.file_path && (file.file_path.startsWith('projects/') || file.file_path.startsWith('external:'))) || !!file.file_url));
   // Sort: cover first, then by created_at asc
   const mediaFilesSorted = [...mediaFiles].sort((a, b) => {
     const ac = a.is_cover ? 1 : 0;
@@ -90,11 +107,40 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     return at - bt;
   });
 
-  // Build unified media list (images + videos). Fallback to placeholders when empty
-  const galleryMedia: { type: 'image' | 'video'; url: string; name?: string }[] = (mediaFilesSorted.length
-    ? mediaFilesSorted.map((file) => ({ type: file.file_type, url: file.file_url, name: file.file_name }))
-    : placeholderImages.map((u) => ({ type: 'image', url: u }))
-  ) as any;
+  // Build unified media list with thumbnail support for videos (YouTube etc.)
+  const galleryMedia: { type: 'image' | 'video'; url: string; name?: string; thumb?: string }[] = (
+    mediaFilesSorted.map((file) => {
+      const path = file.file_path || '';
+      const external = path.startsWith('external:') ? path.replace(/^external:/, '') : '';
+      const storage = path.startsWith('projects/') ? path : '';
+      const direct = file.file_url || external || storage;
+      const url = direct || '';
+
+      const ensureYoutubeThumb = (u: string): string => {
+        try {
+          // Support watch?v=ID, youtu.be/ID, /embed/ID, /shorts/ID
+          const idMatch = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+          const id = idMatch ? idMatch[1] : '';
+          return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
+        } catch {
+          return '';
+        }
+      };
+
+      let thumb = '';
+      if (file.file_type === 'image') {
+        thumb = url;
+      } else if (file.file_type === 'video') {
+        thumb = file.thumbnail_url || ensureYoutubeThumb(url) || '';
+      }
+
+      // Always provide a visible fallback for thumbnails when none can be derived
+      const safeThumb = thumb && thumb.trim().length > 0 ? thumb : '/placeholder-project.svg';
+
+      return { type: file.file_type as 'image' | 'video', url, name: file.file_name, thumb: safeThumb };
+    }).filter(m => !!m.url)
+  );
+  console.log('[ProjectPage] galleryMedia built:', { projectId: project.id, count: galleryMedia.length, galleryMedia, rawFilesCount: projectFiles.length, rawFiles: projectFiles });
 
   // Keep active index in range when gallery changes
   useEffect(() => {
@@ -154,75 +200,109 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-1">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Steam/itch-like hero media carousel */}
+          {/* Steam-like hero media carousel with custom thumbnail strip */}
           <Card>
             <CardContent className="p-0">
-              <div className="relative w-full bg-black rounded-lg overflow-hidden">
-                {/* Main area */}
-                <div className="relative w-full h-[60vh] min-h-[320px]">
-                  {galleryMedia[activeIndex]?.type === 'video' ? (
-                    <iframe
-                      src={galleryMedia[activeIndex].url}
-                      title={galleryMedia[activeIndex].name || 'Project video'}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      className="absolute inset-0 w-full h-full"
-                    />
-                  ) : (
-                    <img
-                      src={galleryMedia[activeIndex]?.url || '/placeholder-project.svg'}
-                      alt={galleryMedia[activeIndex]?.name || project.title}
-                      className="absolute inset-0 w-full h-full object-contain bg-black"
-                    />
-                  )}
-                  {/* Nav buttons */}
-                  {galleryMedia.length > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        aria-label="Previous"
-                        onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Next"
-                        onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-                {/* Thumbnails */}
-                {galleryMedia.length > 0 && (
-                  <div className="flex gap-2 p-3 overflow-x-auto bg-muted/30">
-                    {galleryMedia.map((m, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setActiveIndex(idx)}
-                        className={`relative h-20 aspect-video rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
-                        aria-label={`Go to media ${idx + 1}`}
-                      >
-                        {m.type === 'video' ? (
-                          <div className="w-full h-full bg-black/60 grid place-items-center text-white">
-                            <Play className="w-6 h-6" />
-                          </div>
-                        ) : (
-                          <img src={m.url} alt={m.name || `Media ${idx + 1}`} className="h-full w-auto object-cover" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+              {/* Main media carousel */}
+              <Carousel
+                selectedItem={activeIndex}
+                onChange={(index) => setActiveIndex(index)}
+                showThumbs={false}
+                showIndicators={true}
+                showStatus={false}
+                infiniteLoop
+                emulateTouch
+                swipeable
+                useKeyboardArrows
+                dynamicHeight={false}
+              >
+                {galleryMedia.length > 0 ? (
+                  galleryMedia.map((m, idx) => (
+                    <div key={idx} className="bg-black">
+                      {m.type === 'video' ? (
+                        <div className="relative" style={{ paddingTop: '56.25%' }}>
+                          <iframe
+                            src={m.url}
+                            title={m.name || 'Project video'}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            className="absolute inset-0 w-full h-full"
+                          />
+                        </div>
+                      ) : (
+                        <SupabaseImage
+                          src={m.url}
+                          alt={m.name || project.title}
+                          className="w-full h-auto object-contain bg-black"
+                          fallbackSrc="/placeholder-project.svg"
+                        />
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  placeholderImages.map((src, idx) => (
+                    <div key={idx}>
+                      <img src={src} alt={`Placeholder ${idx + 1}`} />
+                    </div>
+                  ))
                 )}
-              </div>
+              </Carousel>
+
+              {/* Steam-like thumbnail strip */}
+              {galleryMedia.length > 0 && (
+                <div className="relative w-full bg-muted/30">
+                  {/* fade edges */}
+                  <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                  <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
+
+                  {/* scrollable row */}
+                  <div ref={thumbRef} className="overflow-x-auto overflow-y-hidden whitespace-nowrap p-3">
+                    <div className="inline-flex items-stretch gap-2">
+                      {galleryMedia.map((m, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setActiveIndex(idx)}
+                          className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
+                          aria-label={`Go to media ${idx + 1}`}
+                        >
+                          <img
+                            src={(m as any).thumb || m.url || '/placeholder-project.svg'}
+                            alt={m.name || `Media ${idx + 1}`}
+                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                          {m.type === 'video' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <Play className="text-white w-6 h-6 drop-shadow" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* left/right scroll buttons */}
+                  <button
+                    type="button"
+                    aria-label="Scroll thumbnails left"
+                    onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: -240, behavior: 'smooth' }); }}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Scroll thumbnails right"
+                    onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: 240, behavior: 'smooth' }); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
             </CardContent>
           </Card>
 

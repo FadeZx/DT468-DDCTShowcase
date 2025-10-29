@@ -134,15 +134,15 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
       </div>
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 lg:gap-10">
         {/* Projects Section */}
-        <div className="lg:col-span-3">
+        <div className="md:col-span-4 order-2 md:order-1">
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-center mb-6">
               <h2 className="text-2xl font-semibold">Browse Projects</h2>
             </div>
             
-            <TabsList className="grid w-full grid-cols-6 mb-6">
+            <TabsList className="flex flex-wrap justify-center gap-2 w-full mb-6">
               {categories.map((category) => (
                 <TabsTrigger key={category.id} value={category.id} className="text-xs">
                   {category.name}
@@ -154,7 +154,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
             </TabsList>
 
             <TabsContent value={selectedCategory}>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-1">
                 {filteredProjects.slice(0, 12).map((project) => (
                   <ProjectCard
                     key={project.id}
@@ -176,7 +176,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="md:col-span-1 space-y-10 order-1 md:order-2">
           {/* Upcoming Events */}
           <Card>
             <CardHeader>
@@ -200,30 +200,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
             </CardContent>
           </Card>
 
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {recentProjects.slice(0, 5).map((project) => (
-                <div key={project.id} className="flex items-center gap-3">
-                  <SupabaseImage
-                    src="/placeholder-project.svg"
-                    alt={project.title}
-                    className="w-10 h-10 rounded object-cover"
-                    fallbackSrc="/placeholder-project.svg"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{project.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      by {project.author.name}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {/* Recent Activity removed */}
         </div>
       </div>
       </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getFileUrl, getBestFileUrl } from '../../utils/fileStorage';
 
 interface SupabaseImageProps {
   src: string;
@@ -23,29 +24,42 @@ export function SupabaseImage({
 
   useEffect(() => {
     const loadImage = async () => {
-      if (!src) {
-        setImageUrl(fallbackSrc);
-        setLoading(false);
-        return;
-      }
-
-      // If it's already a full URL or data URL, use it directly
-      if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('/')) {
-        setImageUrl(src);
-        setLoading(false);
-        return;
-      }
-
-      // If it's a valid URL or path, use it directly
       try {
-        if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('/')) {
-          setImageUrl(src);
-        } else {
-          // For non-URL paths, use fallback
+        if (!src) {
           setImageUrl(fallbackSrc);
+          return;
         }
+
+        // Strip known prefixes like external:
+        const raw = src.startsWith('external:') ? src.replace(/^external:/, '') : src;
+        console.log('[SupabaseImage] resolve src:', { src, raw });
+
+        // If it's a full URL, data URL, or absolute path, use directly
+        if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) {
+          console.log('[SupabaseImage] using direct URL', raw);
+          setImageUrl(raw);
+          return;
+        }
+
+        // If it looks like a Supabase Storage path (e.g., projects/...), resolve to public URL
+        if (raw.startsWith('projects/')) {
+          try {
+            const url = await getBestFileUrl(raw, 3600);
+            console.log('[SupabaseImage] signed/public URL:', url);
+            setImageUrl(url);
+          } catch (e) {
+            console.warn('[SupabaseImage] signed URL failed, fallback public URL', e);
+            const url = getFileUrl(raw);
+            setImageUrl(url);
+          }
+          return;
+        }
+
+        // Fallback if unknown format
+        console.warn('[SupabaseImage] unknown src format, fallback');
+        setImageUrl(fallbackSrc);
       } catch (err) {
-        console.error('Error loading image:', err);
+        console.error('[SupabaseImage] Error loading image:', err);
         setError(true);
         setImageUrl(fallbackSrc);
       } finally {
@@ -65,18 +79,26 @@ export function SupabaseImage({
     return (
       <div 
         className={`bg-muted animate-pulse ${className}`}
-        style={style}
+        style={{ display: 'block', ...style }}
       />
     );
   }
 
   return (
     <img
+      key={imageUrl}
       src={error ? fallbackSrc : imageUrl}
       alt={alt}
       className={className}
-      style={style}
-      onError={handleError}
+      style={{ display: 'block', width: '100%', height: '100%', objectFit: (className?.includes('object-contain') ? 'contain' : className?.includes('object-cover') ? 'cover' : undefined), ...style }}
+      onError={(e) => {
+        console.error('[SupabaseImage] onError', { src: error ? fallbackSrc : imageUrl });
+        handleError();
+      }}
+      onLoad={(e) => {
+        const img = e.currentTarget as HTMLImageElement;
+        console.log('[SupabaseImage] onLoad', { src: img.currentSrc || img.src, naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight });
+      }}
       loading="lazy"
     />
   );

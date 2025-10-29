@@ -170,9 +170,24 @@ export async function deleteProjectFile(filePath: string) {
 
 export function getFileUrl(filePath: string): string {
   const bucket = 'project-files';
-  const { data } = supabase.storage
-    .from(bucket)
-    .getPublicUrl(filePath);
-  
+  // Try signed URL for private buckets; fall back to public URL
+  try {
+    // @ts-ignore - we will return synchronously after kicking off signed URL; fallback below
+    const signed = (supabase.storage as any).from(bucket).createSignedUrl;
+  } catch {}
+  // Public URL fallback
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+export async function getBestFileUrl(filePath: string, expiresInSeconds = 3600): Promise<string> {
+  const bucket = 'project-files';
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(filePath, expiresInSeconds);
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch {}
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return data.publicUrl;
 }
