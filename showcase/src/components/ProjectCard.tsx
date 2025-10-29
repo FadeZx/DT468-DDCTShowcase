@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardFooter } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -29,12 +30,33 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, onClick }: ProjectCardProps) {
+  const coverRef = useRef<HTMLDivElement>(null);
+  const [infoHeightPx, setInfoHeightPx] = useState<number>(96);
+
+  useEffect(() => {
+    const element = coverRef.current;
+    if (!element) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const height = entry?.contentRect?.height ?? 0;
+      // Ensure a sensible minimum height for very small cards
+      // Reserve reasonable minimum so footer fits
+      setInfoHeightPx(Math.max(96, Math.round(height / 3)));
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   return (
     <Card 
       className="group cursor-pointer hover:shadow-xl border-border bg-card w-full"
       onClick={() => onClick(project.id)}
     >
-      <div className="relative overflow-hidden rounded-t-lg aspect-square">
+      <div ref={coverRef} className="relative overflow-hidden rounded-t-lg aspect-square">
         <SupabaseImage
           src={project.cover_image || project.thumbnail || ''}
           alt={project.title}
@@ -42,7 +64,7 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
           fallbackSrc="/placeholder-project.svg"
         />
         {project.featured && (
-          <Badge className="absolute top-2 left-2 bg-primary text-primary-foreground">
+          <Badge className=" bg-primary text-primary-foreground">
             Featured
           </Badge>
         )}
@@ -54,43 +76,45 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
         </Badge>
       </div>
       
-      <CardContent className="p-3">
-        <h3 className="font-semibold mb-1 line-clamp-1 group-hover:text-primary transition-colors text-sm">
-          {project.title}
-        </h3>
-        <div className="h-8 overflow-hidden mb-1">
-          <p className="text-xs text-muted-foreground line-clamp-1">
-            {project.description}
-          </p>
-        </div>
+      <div className="flex flex-col" style={{ height: infoHeightPx }}>
+        <CardContent className="px-3 pt-2 pb-3 flex-1 overflow-hidden">
+          <h3 className="font-semibold mb-0 line-clamp-1 group-hover:text-primary transition-colors text-sm">
+            {project.title}
+          </h3>
+          <div className="overflow-hidden mb-1">
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {project.description}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Avatar className="w-5 h-5">
+              <AvatarImage src="/placeholder-avatar.svg" />
+              <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
+            </Avatar>
+            <span className="text-xs text-muted-foreground truncate">
+              {project.author.name} • {project.author.year}
+            </span>
+          </div>
+        </CardContent>
         
-        <div className="flex items-center gap-2 mb-1">
-          <Avatar className="w-5 h-5">
-            <AvatarImage src="/placeholder-avatar.svg" />
-            <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
-          </Avatar>
-          <span className="text-xs text-muted-foreground truncate">
-            {project.author.name} • {project.author.year}
-          </span>
-        </div>
-      </CardContent>
-      
-      <CardFooter className="p-3 pt-0 flex items-center justify-between text-xs text-muted-foreground h-9">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <Eye className="w-3 h-3" />
-            <span>{project.stats.views}</span>
+        <CardFooter className="p-3 pt-0 flex items-center justify-between text-xs text-muted-foreground h-9">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <Eye className="w-3 h-3" />
+              <span>{project.stats.views}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Download className="w-3 h-3" />
+              <span>{project.stats.downloads}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Heart className="w-3 h-3" />
+              <span>{project.stats.likes}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Download className="w-3 h-3" />
-            <span>{project.stats.downloads}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Heart className="w-3 h-3" />
-            <span>{project.stats.likes}</span>
-          </div>
-        </div>
-      </CardFooter>
+        </CardFooter>
+      </div>
     </Card>
   );
 }
