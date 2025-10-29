@@ -122,7 +122,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
     try {
       // Create admin client with service role key
       const adminClient = createClient(
-        `https://${projectId}.supabase.co`,
+        import.meta.env.VITE_SUPABASE_URL as string,
         serviceRoleKey,
         { auth: { persistSession: false, autoRefreshToken: false } }
       );
@@ -214,7 +214,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
 
       // Create admin client with service role key
       const adminClient = createClient(
-        `https://${projectId}.supabase.co`,
+        import.meta.env.VITE_SUPABASE_URL as string,
         serviceRoleKey,
         { auth: { persistSession: false, autoRefreshToken: false } }
       );
