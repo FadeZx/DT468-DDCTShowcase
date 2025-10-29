@@ -21,6 +21,12 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     flowType: 'pkce'
+  },
+  // Ensure the `apikey` header is always sent
+  global: {
+    headers: {
+      apikey: supabaseAnonKey
+    }
   }
 });
 

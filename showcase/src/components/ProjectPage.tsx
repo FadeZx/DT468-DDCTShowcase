@@ -33,7 +33,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     'https://picsum.photos/seed/4/1280/720',
     'https://picsum.photos/seed/5/1280/720',
   ];
-  const [activeImage, setActiveImage] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     if (project.media?.all || Array.isArray(project.media)) {
@@ -78,21 +78,28 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     currentUser.role === 'admin'
   );
 
-  // Get media files from project files
-  const mediaFiles = projectFiles.filter(file => 
-    file.file_type === 'image' || file.file_type === 'video'
-  );
+  // Get media files from project files (images/videos)
+  const mediaFiles = projectFiles.filter(file => file.file_type === 'image' || file.file_type === 'video');
+  // Sort: cover first, then by created_at asc
+  const mediaFilesSorted = [...mediaFiles].sort((a, b) => {
+    const ac = a.is_cover ? 1 : 0;
+    const bc = b.is_cover ? 1 : 0;
+    if (bc - ac !== 0) return bc - ac;
+    const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return at - bt;
+  });
 
-  // Build gallery images list (prefer uploaded images, fallback to placeholders)
-  const imageFiles = mediaFiles.filter(file => file.file_type === 'image');
-  const galleryImages: string[] = imageFiles.length
-    ? imageFiles.map((file) => file.file_url)
-    : placeholderImages;
+  // Build unified media list (images + videos). Fallback to placeholders when empty
+  const galleryMedia: { type: 'image' | 'video'; url: string; name?: string }[] = (mediaFilesSorted.length
+    ? mediaFilesSorted.map((file) => ({ type: file.file_type, url: file.file_url, name: file.file_name }))
+    : placeholderImages.map((u) => ({ type: 'image', url: u }))
+  ) as any;
 
-  // Keep active image index in range when gallery changes
+  // Keep active index in range when gallery changes
   useEffect(() => {
-    setActiveImage((prev) => (galleryImages.length ? Math.min(prev, galleryImages.length - 1) : 0));
-  }, [project.id, galleryImages.length]);
+    setActiveIndex((prev) => (galleryMedia.length ? Math.min(prev, galleryMedia.length - 1) : 0));
+  }, [project.id, galleryMedia.length]);
 
   // Get downloadable files
   const downloadableFiles = projectFiles.filter(file => 
@@ -150,23 +157,79 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Media Gallery */}
+          {/* Steam/itch-like hero media carousel */}
           <Card>
             <CardContent className="p-0">
-              <SupabaseImage
-                src={project.cover_image || ''}
-                alt={project.title}
-                className="w-full h-80 object-cover rounded-lg"
-                fallbackSrc="/placeholder-project.svg"
-              />
+              <div className="relative w-full bg-black rounded-lg overflow-hidden">
+                {/* Main area */}
+                <div className="relative w-full h-[60vh] min-h-[320px]">
+                  {galleryMedia[activeIndex]?.type === 'video' ? (
+                    <iframe
+                      src={galleryMedia[activeIndex].url}
+                      title={galleryMedia[activeIndex].name || 'Project video'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="absolute inset-0 w-full h-full"
+                    />
+                  ) : (
+                    <img
+                      src={galleryMedia[activeIndex]?.url || '/placeholder-project.svg'}
+                      alt={galleryMedia[activeIndex]?.name || project.title}
+                      className="absolute inset-0 w-full h-full object-contain bg-black"
+                    />
+                  )}
+                  {/* Nav buttons */}
+                  {galleryMedia.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Previous"
+                        onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Next"
+                        onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                {/* Thumbnails */}
+                {galleryMedia.length > 0 && (
+                  <div className="flex gap-2 p-3 overflow-x-auto bg-muted/30">
+                    {galleryMedia.map((m, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setActiveIndex(idx)}
+                        className={`relative h-20 aspect-video rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
+                        aria-label={`Go to media ${idx + 1}`}
+                      >
+                        {m.type === 'video' ? (
+                          <div className="w-full h-full bg-black/60 grid place-items-center text-white">
+                            <Play className="w-6 h-6" />
+                          </div>
+                        ) : (
+                          <img src={m.url} alt={m.name || `Media ${idx + 1}`} className="h-full w-auto object-cover" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
           {/* Project Details */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="media">Media</TabsTrigger>
               <TabsTrigger value="files">Files</TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
@@ -215,13 +278,13 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                     </div>
                   )}
 
-                  {project.collaborators && project.collaborators.length > 0 && (
+                  {project.members && project.members.length > 0 && (
                     <div>
-                      <h4 className="font-semibold mb-2">Collaborators</h4>
+                      <h4 className="font-semibold mb-2">Members</h4>
                       <div className="flex flex-wrap gap-2">
-                        {project.collaborators.map((collaborator: any) => (
-                          <Badge key={collaborator.id} variant="outline">
-                            {collaborator.name}
+                        {project.members.map((member: any) => (
+                          <Badge key={member.id} variant="outline">
+                            {member.name}
                           </Badge>
                         ))}
                       </div>
@@ -242,92 +305,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               </Card>
             </TabsContent>
 
-            <TabsContent value="media" className="mt-6">
-              {/* Steam-like gallery inside Media tab */}
-              <Card>
-                <CardContent className="p-0">
-                  <div className="w-full">
-                    {/* Main image */}
-                    <div className="relative">
-                      <img
-                        src={galleryImages[activeImage]}
-                        alt={`Screenshot ${activeImage + 1}`}
-                        className="w-full aspect-video object-cover rounded-t-lg"
-                      />
-                      <button
-                        type="button"
-                        aria-label="Previous screenshot"
-                        onClick={() => setActiveImage((prev) => (prev - 1 + galleryImages.length) % galleryImages.length)}
-                        className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Next screenshot"
-                        onClick={() => setActiveImage((prev) => (prev + 1) % galleryImages.length)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </div>
-                    {/* Thumbnails */}
-                    <div className="flex gap-2 p-3 overflow-x-auto bg-muted/30 rounded-b-lg">
-                      {galleryImages.map((src, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setActiveImage(idx)}
-                          className={`relative h-20 aspect-video rounded-md overflow-hidden border ${idx === activeImage ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
-                          aria-label={`Go to screenshot ${idx + 1}`}
-                        >
-                          <img src={src} alt={`Thumbnail ${idx + 1}`} className="h-full w-auto object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Existing media grid (optional to keep below) */}
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className="text-sm text-muted-foreground">Loading media...</p>
-                </div>
-              ) : mediaFiles.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  {mediaFiles.map((file, index) => (
-                    <Card key={index}>
-                      <CardContent className="p-0">
-                        {file.file_type === 'image' ? (
-                          <SupabaseImage
-                            src={file.file_url}
-                            alt={file.file_name}
-                            className="w-full h-48 object-cover rounded-lg"
-                            fallbackSrc="/placeholder-project.svg"
-                          />
-                        ) : (
-                          <div className="w-full h-48 bg-muted rounded-lg flex items-center justify-center">
-                            <Play className="w-12 h-12 text-muted-foreground" />
-                          </div>
-                        )}
-                        <div className="p-3">
-                          <p className="text-sm font-medium">{file.file_name}</p>
-                          <p className="text-xs text-muted-foreground">{file.file_type}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="mt-4">
-                  <CardContent className="text-center py-8">
-                    <p className="text-muted-foreground">No media files uploaded for this project.</p>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
 
             <TabsContent value="files" className="mt-6">
               {loading ? (

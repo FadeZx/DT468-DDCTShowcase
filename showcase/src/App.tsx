@@ -8,7 +8,7 @@ import { UserProfile } from './components/UserProfile';
 import { AdminDashboard } from './components/AdminDashboard';
 import UploadProjectPage from './components/UploadProject/UploadProjectPage';
 import MyProjectsPage from './components/MyProjects/MyProjectsPage';
-import { AccountManagement } from './components/Admin/AccountManagement';
+
 import { AccountSettings } from './components/Profile/AccountSettings';
 import { Toaster } from './components/ui/sonner';
 import { EventsPage } from './components/EventsPage';
@@ -108,9 +108,67 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
 
-  // Load mock UI data for catalogs; auth is real via Supabase
+  // Load mock UI data first; then merge real projects from Supabase
   useEffect(() => {
     loadMockData();
+    // Then fetch real projects and merge
+    (async () => {
+      try {
+        const { data: rows, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('status', 'published')
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        const ownerIds = Array.from(new Set((rows || []).map(r => r.owner_id).filter(Boolean)));
+        let owners: any[] = [];
+        if (ownerIds.length) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, name, email, avatar, year')
+            .in('id', ownerIds);
+          owners = profiles || [];
+        }
+        const supabaseProjects = (rows || []).map(p => {
+          const author = owners.find(o => o.id === p.owner_id);
+          return {
+            id: p.id,
+            title: p.title,
+            description: p.description,
+            category: p.category || 'Uncategorized',
+            featured: false,
+            created_at: p.created_at,
+            author_id: p.owner_id,
+            cover_image: p.cover_image || '/placeholder-project.svg',
+            views: 0,
+            downloads: 0,
+            likes: 0,
+            tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
+            author: author ? {
+              id: author.id,
+              name: author.name || author.email || 'Unknown',
+              avatar: author.avatar || null,
+              year: author.year || 'Unknown'
+            } : {
+              id: p.owner_id,
+              name: 'Unknown',
+              avatar: null,
+              year: 'Unknown'
+            },
+            stats: { views: 0, downloads: 0, likes: 0 },
+            media: { all: [], images: [], videos: [], downloads: [] },
+            members: []
+          };
+        });
+        setProjects(prev => {
+          const byId = new Map(prev.map(p => [p.id, p]));
+          for (const sp of supabaseProjects) byId.set(sp.id, sp);
+          return Array.from(byId.values());
+        });
+      } catch (e) {
+        console.warn('Failed to load Supabase projects, showing mock only', e);
+      }
+    })();
   }, []);
 
   const loadMockData = () => {
@@ -412,15 +470,7 @@ export default function App() {
                 )
               } />
               
-              <Route path="/account-management" element={
-                currentUser?.role === 'admin' ? (
-                  <AccountManagement onAccountCreated={loadData} />
-                ) : (
-                  <div className="max-w-7xl mx-auto px-6 py-8">
-                    <p className="text-center">Access denied</p>
-                  </div>
-                )
-              } />
+
               
               <Route path="/account-settings" element={
                 currentUser ? (

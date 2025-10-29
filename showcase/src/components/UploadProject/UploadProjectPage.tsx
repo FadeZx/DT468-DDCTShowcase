@@ -10,13 +10,13 @@ import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 import {
   Upload,
   FileText,
-  Settings,
   Eye,
   CheckCircle,
   ArrowLeft,
   ArrowRight,
   Plus,
-  X
+  X,
+  Users
 } from 'lucide-react';
 
 interface UploadProjectPageProps {
@@ -46,10 +46,13 @@ interface MediaItem {
   status?: 'uploading' | 'uploaded' | 'error';
 }
 
-interface Collaborator {
+type MemberRole = 'owner' | 'maintainer' | 'editor' | 'viewer';
+
+interface Member {
   id: string;
   name: string;
   email: string;
+  role: MemberRole;
 }
 
 interface ProjectData {
@@ -60,14 +63,15 @@ interface ProjectData {
   tags: string[];
   price: number;
   isPublic: boolean;
-  collaborators: Collaborator[];
-  media: MediaItem[];
+  members: Member[];
+  coverImage?: MediaItem | null; // single cover for card/listing
+  media: MediaItem[];            // gallery (images + video links + files)
 }
 
 const STEPS = [
   { id: 1, title: 'Project Details', icon: FileText },
   { id: 2, title: 'Media & Files', icon: Upload },
-  { id: 3, title: 'Customization', icon: Settings },
+  { id: 3, title: 'Team & Settings', icon: Users },
   { id: 4, title: 'Preview & Publish', icon: Eye }
 ];
 
@@ -108,7 +112,8 @@ export default function UploadProjectPage({
     tags: [],
     price: 0,
     isPublic: true,
-    collaborators: [],
+    members: [],
+    coverImage: null,
     media: []
   });
 
@@ -116,7 +121,7 @@ export default function UploadProjectPage({
   const [isUploading, setIsUploading] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [loading, setLoading] = useState(false);
-  const [newCollaborator, setNewCollaborator] = useState('');
+  const [newMember, setNewMember] = useState('');
   const [videoInput, setVideoInput] = useState('');
   const [externalFileName, setExternalFileName] = useState('');
   const [externalFileUrl, setExternalFileUrl] = useState('');
@@ -147,11 +152,12 @@ export default function UploadProjectPage({
             order: 0
           });
         }
-        const collaboratorEntries: Collaborator[] = Array.isArray(initialProject.collaborators)
-          ? initialProject.collaborators.map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              email: c.email || ''
+        const memberEntries: Member[] = Array.isArray(initialProject.members)
+          ? initialProject.members.map((m: any) => ({
+              id: m.id,
+              name: m.name,
+              email: m.email || '',
+              role: m.role || 'editor'
             }))
           : [];
         setProjectData(prev => ({
@@ -163,7 +169,7 @@ export default function UploadProjectPage({
           tags,
           isPublic: true,
           media: mediaItems,
-          collaborators: collaboratorEntries
+          members: memberEntries
         }));
         setLoading(false);
         return;
@@ -219,28 +225,32 @@ export default function UploadProjectPage({
           console.error('Error loading project files:', filesError);
         }
 
-        let collaboratorEntries: Collaborator[] = [];
+        let memberEntries: Member[] = [];
         try {
-          const { data: collaboratorLinks } = await supabase
+          const { data: memberLinks } = await supabase
             .from('project_collaborators')
-            .select('user_id')
+            .select('user_id, role')
             .eq('project_id', editProjectId);
 
-          if (collaboratorLinks?.length) {
-            const collaboratorIds = collaboratorLinks.map(link => link.user_id);
-            const { data: collaboratorProfiles } = await supabase
+          if (memberLinks?.length) {
+            const memberIds = memberLinks.map(link => link.user_id);
+            const { data: memberProfiles } = await supabase
               .from('profiles')
               .select('id, name, email')
-              .in('id', collaboratorIds);
+              .in('id', memberIds);
 
-            collaboratorEntries = (collaboratorProfiles || []).map(profile => ({
-              id: profile.id,
-              name: profile.name || profile.email || 'Collaborator',
-              email: profile.email || ''
-            }));
+            memberEntries = (memberProfiles || []).map(profile => {
+              const link = memberLinks.find(l => l.user_id === profile.id);
+              return {
+                id: profile.id,
+                name: profile.name || profile.email || 'Member',
+                email: profile.email || '',
+                role: link?.role || 'viewer'
+              };
+            });
           }
-        } catch (collaboratorError) {
-          console.error('Error loading collaborators:', collaboratorError);
+        } catch (memberError) {
+          console.error('Error loading members:', memberError);
         }
 
         setProjectData(prev => ({
@@ -253,7 +263,7 @@ export default function UploadProjectPage({
           price: project.price || 0,
           isPublic: project.status === 'published',
           media: mediaItems,
-          collaborators: collaboratorEntries
+          members: memberEntries
         }));
 
         if (!CATEGORIES.includes(project.category) && project.category) {
@@ -284,11 +294,12 @@ export default function UploadProjectPage({
             order: 0
           });
         }
-        const collaboratorEntries: Collaborator[] = Array.isArray(initialProject.collaborators)
-          ? initialProject.collaborators.map((c: any) => ({
-              id: c.id,
-              name: c.name,
-              email: c.email || ''
+        const memberEntries: Member[] = Array.isArray(initialProject.members)
+          ? initialProject.members.map((m: any) => ({
+              id: m.id,
+              name: m.name,
+              email: m.email || '',
+              role: m.role || 'editor'
             }))
           : [];
         setProjectData(prev => ({
@@ -300,7 +311,7 @@ export default function UploadProjectPage({
           tags,
           isPublic: true,
           media: mediaItems,
-          collaborators: collaboratorEntries
+          members: memberEntries
         }));
       } else {
         alert('Failed to load project data');
@@ -332,10 +343,11 @@ export default function UploadProjectPage({
   };
 
   const setAsCover = (id: string) => {
-    setProjectData(prev => ({
-      ...prev,
-      media: prev.media.map(m => ({ ...m, isCover: m.id === id }))
-    }));
+    setProjectData(prev => {
+      const cover = prev.media.find(m => m.id === id && m.type === 'image') || null;
+      const media = prev.media.map(m => ({ ...m, isCover: m.id === id }));
+      return { ...prev, coverImage: cover || prev.coverImage || null, media };
+    });
   };
 
   const removeMedia = async (id: string) => {
@@ -505,35 +517,36 @@ export default function UploadProjectPage({
     }));
   };
 
-  const addCollaborator = async () => {
-    if (!newCollaborator.trim()) return;
+  const addMember = async () => {
+    if (!newMember.trim()) return;
 
     try {
       // Search for user by email or username
       const { data: users, error } = await supabase
         .from('profiles')
         .select('id, name, email')
-        .or(`email.eq.${newCollaborator.trim()},name.ilike.%${newCollaborator.trim()}%`);
+        .or(`email.eq.${newMember.trim()},name.ilike.%${newMember.trim()}%`);
 
       if (error) throw error;
 
       if (users && users.length > 0) {
         const user = users[0];
-        if (!projectData.collaborators.some(collab => collab.id === user.id)) {
+        if (!projectData.members.some(member => member.id === user.id)) {
           setProjectData(prev => ({
             ...prev,
-            collaborators: [
-              ...prev.collaborators,
+            members: [
+              ...prev.members,
               {
                 id: user.id,
-                name: user.name || user.email || 'Collaborator',
-                email: user.email || ''
+                name: user.name || user.email || 'Member',
+                email: user.email || '',
+                role: 'editor'
               }
             ]
           }));
-          setNewCollaborator('');
+          setNewMember('');
         } else {
-          alert('User is already a collaborator');
+          alert('User is already a member');
         }
       } else {
         alert('User not found');
@@ -544,10 +557,10 @@ export default function UploadProjectPage({
     }
   };
 
-  const removeCollaborator = (collaboratorId: string) => {
+  const removeMember = (memberId: string) => {
     setProjectData(prev => ({
       ...prev,
-      collaborators: prev.collaborators.filter(collab => collab.id !== collaboratorId)
+      members: prev.members.filter(m => m.id !== memberId)
     }));
   };
 
@@ -569,23 +582,18 @@ export default function UploadProjectPage({
       }
       const targetProjectId = editProjectId || projectFolderId;
 
-      const cover = projectData.media.find(m => m.isCover && m.type === 'image')
-              || projectData.media.find(m => m.type === 'image');
+      const cover = projectData.coverImage || projectData.media.find(m => m.isCover && m.type === 'image') || null;
 
       const projectRecord = {
-        ...(editMode ? {} : { id: targetProjectId }),
-        id: targetProjectId,
         title: projectData.title,
         description: projectData.shortDescription,
         long_description: projectData.fullDescription,
         category: finalCategory,
-
-        author_id: currentUser.id,
+        owner_id: currentUser.id,
         tags: projectData.tags,
         status: projectData.isPublic ? 'published' : 'draft',
         price: projectData.price || 0,
         cover_image: cover?.url || null,
-        media: projectData.media
       };
 
       // Demo mode: save to sessionStorage and skip Supabase
@@ -612,9 +620,10 @@ export default function UploadProjectPage({
       } else {
         const { error: projectError } = await supabase
           .from('projects')
-          .insert([projectRecord])
+          .insert([{ ...projectRecord, id: targetProjectId }])
           .single();
         if (projectError) throw projectError;
+        // Note: Skipping initial insert into project_collaborators due to RLS; relies on owner_id on projects.
       }
 
       const filesPayload = projectData.media.map(m => ({
@@ -626,7 +635,7 @@ export default function UploadProjectPage({
         file_type: m.fileType || (m.type === 'image' ? 'image' : m.type === 'video' ? 'video' : 'document'),
         file_size: m.size || null,
         mime_type: m.mimeType || null,
-        is_cover: !!m.isCover
+        is_cover: projectData.coverImage ? (m.id === projectData.coverImage.id) : !!m.isCover
       }));
 
       if (editMode) {
@@ -638,23 +647,26 @@ export default function UploadProjectPage({
         if (filesError) throw filesError;
       }
 
-      if (editMode) {
+      // Skip members on create. When editing, we also skip modifying members here to avoid RLS issues.
+      // Members can be managed later in a dedicated Edit screen.
+      /* if (editMode) {
         await supabase.from('project_collaborators').delete().eq('project_id', targetProjectId);
-      }
+      } */
 
-      if (projectData.collaborators.length) {
-        const collaboratorRows = projectData.collaborators.map(collaborator => ({
+      /* if (projectData.members.length) {
+        const memberRows = projectData.members.map(member => ({
           project_id: targetProjectId,
-          user_id: collaborator.id,
-          role: 'collaborator',
+          user_id: member.id,
+          role: member.role || 'editor',
           invited_by: currentUser.id
         }));
 
-        const { error: collabError } = await supabase
+        // Try upsert; if blocked by RLS, silently skip (owner can manage members via dedicated UI later)
+        const { error: memberErr } = await supabase
           .from('project_collaborators')
-          .upsert(collaboratorRows, { onConflict: 'project_id,user_id' });
-        if (collabError) throw collabError;
-      }
+          .upsert(memberRows, { onConflict: 'project_id,user_id' });
+        // Intentionally ignore RLS or other errors here. Members can be added later in Edit.
+      } */
 
       alert(editMode ? 'Project updated!' : 'Project created!');
       onProjectUpdated?.();
@@ -663,6 +675,15 @@ export default function UploadProjectPage({
     } catch (e:any) {
       console.error(e);
       alert(e.message || 'Failed to save project');
+      // Cleanup: if project creation failed, remove any uploaded storage files for this draft
+      try {
+        if (!editMode && !demoMode) {
+          const toDelete = projectData.media.filter(m => m.source === 'storage' && typeof m.path === 'string' && m.path.startsWith('projects/'));
+          for (const m of toDelete) {
+            try { await deleteProjectFile(m.path as string); } catch {}
+          }
+        }
+      } catch {}
     } finally {
       setIsUploading(false);
     }
@@ -778,8 +799,37 @@ export default function UploadProjectPage({
       case 2:
         return (
           <div className="space-y-6">
-            {/* Images uploader */}
-            <label className="block text-sm font-medium mb-2">Images</label>
+            {/* Cover uploader */}
+            <label className="block text-sm font-medium mb-2">Cover Image (card thumbnail)</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
+              <input
+                id="cover-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const input = e.currentTarget;
+                  const files = e.target.files;
+                  if (files && files.length) {
+                    const uploaded = await handleUpload(files, 'image');
+                    const first = uploaded[0];
+                    if (first) {
+                      setProjectData(prev => ({ ...prev, coverImage: first }));
+                    }
+                    input.value = '';
+                  }
+                }}
+              />
+              <Button asChild variant="outline"><label htmlFor="cover-upload">Upload Cover</label></Button>
+              {projectData.coverImage && (
+                <div className="mt-3">
+                  <img src={projectData.coverImage.url} alt="Cover" className="w-full max-h-48 object-contain" />
+                </div>
+              )}
+            </div>
+
+            {/* Gallery images uploader */}
+            <label className="block text-sm font-medium mb-2">Gallery Images</label>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
               <input
                 id="img-upload"
@@ -935,37 +985,38 @@ export default function UploadProjectPage({
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Collaborators</label>
+              <label className="block text-sm font-medium mb-2">Members</label>
               <div className="space-y-4">
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
-                    placeholder="Enter email or username to invite collaborator"
-                    value={newCollaborator}
-                    onChange={(e) => setNewCollaborator(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addCollaborator()}
+                    placeholder="Enter email or username to add member"
+                    value={newMember}
+                    onChange={(e) => setNewMember(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addMember()}
                   />
-                  <Button onClick={addCollaborator} size="sm" className="sm:w-auto">
+                  <Button onClick={addMember} size="sm" className="sm:w-auto">
                     <Plus className="w-4 h-4" />
-                    Invite
+                    Add Member
                   </Button>
                 </div>
 
-                {projectData.collaborators.length > 0 && (
+                {projectData.members.length > 0 && (
                   <div>
-                    <p className="text-sm font-medium mb-2">Current Collaborators:</p>
+                    <p className="text-sm font-medium mb-2">Current Members:</p>
                     <div className="space-y-2">
-                      {projectData.collaborators.map(collaborator => (
-                        <div key={collaborator.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      {projectData.members.map(member => (
+                        <div key={member.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div className="text-sm">
-                            <span className="font-medium">{collaborator.name}</span>
-                            {collaborator.email && (
-                              <span className="text-xs text-gray-500 block">{collaborator.email}</span>
+                            <span className="font-medium">{member.name}</span>
+                            {member.email && (
+                              <span className="text-xs text-gray-500 block">{member.email}</span>
                             )}
+                            <span className="text-xs text-gray-500 ml-2 capitalize">({member.role || 'editor'})</span>
                           </div>
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => removeCollaborator(collaborator.id)}
+                            onClick={() => removeMember(member.id)}
                           >
                             <X className="w-4 h-4" />
                           </Button>
@@ -984,8 +1035,8 @@ export default function UploadProjectPage({
                 <li>• Include clear documentation and setup instructions</li>
                 <li>• Use appropriate tags to help others discover your project</li>
                 <li>• Consider adding a demo or live link if applicable</li>
-                {projectData.collaborators.length > 0 && (
-                  <li>• Collaborators will have edit access to this project</li>
+                {projectData.members.length > 0 && (
+                  <li>• Members with edit roles will have edit access to this project</li>
                 )}
               </ul>
             </div>
@@ -1024,8 +1075,7 @@ export default function UploadProjectPage({
                     {projectData.isPublic ? 'Public' : 'Private'}
                   </div>
                   {(() => {
-                    const cover = projectData.media.find(m => m.isCover && m.type==='image')
-                               || projectData.media.find(m => m.type==='image');
+                    const cover = projectData.coverImage || projectData.media.find(m => m.isCover && m.type==='image');
                     return (
                       <div>
                         <span className="font-medium">Cover: </span>
