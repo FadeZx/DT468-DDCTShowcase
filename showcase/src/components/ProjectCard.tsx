@@ -27,9 +27,13 @@ interface ProjectCardProps {
     featured?: boolean;
   };
   onClick: (projectId: string) => void;
+  theme?: {
+    colors?: { cardBackground?: string; text?: string };
+    layout?: { borderRadius?: number };
+  };
 }
 
-export function ProjectCard({ project, onClick }: ProjectCardProps) {
+export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
   const coverRef = useRef<HTMLDivElement>(null);
   const [infoHeightPx, setInfoHeightPx] = useState<number>(96);
 
@@ -51,12 +55,16 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
     };
   }, []);
 
+  const radius = theme?.layout?.borderRadius ?? 8;
+  const cardBg = theme?.colors?.cardBackground;
+  const textColor = theme?.colors?.text;
   return (
     <Card 
       className="group cursor-pointer hover:shadow-xl border-border bg-card w-full"
       onClick={() => onClick(project.id)}
+      style={{ background: cardBg, color: textColor, borderRadius: radius }}
     >
-      <div ref={coverRef} className="relative overflow-hidden rounded-t-lg aspect-square">
+      <div ref={coverRef} className="relative overflow-hidden aspect-square" style={{ borderTopLeftRadius: radius, borderTopRightRadius: radius }}>
         <SupabaseImage
           src={project.cover_image || project.thumbnail || ''}
           alt={project.title}
@@ -87,14 +95,11 @@ export function ProjectCard({ project, onClick }: ProjectCardProps) {
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             <Avatar className="w-5 h-5">
               <AvatarImage src="/placeholder-avatar.svg" />
               <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
             </Avatar>
-            <span className="text-xs text-muted-foreground truncate">
-              {project.author.name} • {project.author.year}
-            </span>
           </div>
         </CardContent>
         

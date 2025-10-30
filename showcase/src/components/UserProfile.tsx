@@ -8,9 +8,11 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { ProjectCard } from './ProjectCard';
+import { ProfileThemeEditor, ProfileTheme } from './ProfileThemeEditor';
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from './ui/sheet';
 import { 
   Edit, Download, Mail, Github, Linkedin, ExternalLink,
-  Calendar, MapPin, Users, Award, BookOpen, Settings, UserPlus, Shield
+  Calendar, MapPin, Award, BookOpen, Settings, UserPlus, Shield, Palette
 } from 'lucide-react';
 
 interface UserProfileProps {
@@ -25,16 +27,57 @@ interface UserProfileProps {
 export function UserProfile({ user, projects, isOwnProfile, currentUser, onProjectClick, onNavigate }: UserProfileProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
+  const [showInlineTheme, setShowInlineTheme] = useState(false);
 
+  const [theme, setTheme] = useState<ProfileTheme>({
+    colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
+    typography: { fontFamily: 'Inter, system-ui, sans-serif', fontSize: 14, headingSize: 18 },
+    layout: { projectColumns: 3, borderRadius: 8 },
+    images: {},
+    projectOrder: projects.map((p) => p.id),
+    hiddenProjects: [],
+  });
+  
   const canExportPDF = currentUser?.role === 'teacher' || currentUser?.role === 'admin';
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)
   );
+  const combinedProjects = [...userProjects, ...collaborativeProjects].filter(
+    (proj, index, arr) => arr.findIndex(p => p.id === proj.id) === index
+  );
+  const orderMap = new Map(theme.projectOrder.map((id, idx) => [id, idx] as const));
+  const orderedProjects = combinedProjects.slice().sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+  const visibleProjects = orderedProjects.filter(p => !theme.hiddenProjects.includes(p.id));
 
   const handleSave = () => {
-    // Here would be the logic to save user changes
+    // Here would be the logic to save user changes (persist to backend)
     setIsEditing(false);
+  };
+
+  const handleReorder = (projectId: string, direction: 'up' | 'down') => {
+    const order = [...theme.projectOrder];
+    const idx = order.indexOf(projectId);
+    if (idx === -1) return;
+    const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= order.length) return;
+    [order[idx], order[swapWith]] = [order[swapWith], order[idx]];
+    setTheme({ ...theme, projectOrder: order });
+  };
+  const handleToggleHidden = (projectId: string) => {
+    const hidden = new Set(theme.hiddenProjects);
+    if (hidden.has(projectId)) hidden.delete(projectId); else hidden.add(projectId);
+    setTheme({ ...theme, hiddenProjects: Array.from(hidden) });
+  };
+  const handleUploadBanner = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setTheme({ ...theme, images: { ...theme.images, banner: String(reader.result) } });
+    reader.readAsDataURL(file);
+  };
+  const handleUploadBackground = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setTheme({ ...theme, images: { ...theme.images, background: String(reader.result) } });
+    reader.readAsDataURL(file);
   };
 
   const handleExportPDF = () => {
@@ -43,7 +86,23 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="max-w-7xl mx-auto px-6 py-8" style={{ 
+      background: theme.colors.background,
+      color: theme.colors.text,
+      fontFamily: theme.typography.fontFamily,
+      fontSize: theme.typography.fontSize,
+      backgroundImage: theme.images.background ? `url(${theme.images.background})` : undefined,
+      backgroundSize: theme.images.background ? 'cover' : undefined,
+      backgroundPosition: theme.images.background ? 'center' : undefined,
+    }}>
+      {/* Banner */}
+      {theme.images.banner && (
+        <div className="w-full h-32 rounded-lg mb-6" style={{
+          backgroundImage: `url(${theme.images.banner})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }} />
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Profile Sidebar */}
         <div className="space-y-6">
@@ -73,6 +132,41 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                     placeholder="Bio"
                     rows={3}
                   />
+                  <Input
+                    value={editedUser.majors || ''}
+                    onChange={(e) => setEditedUser({...editedUser, majors: e.target.value})}
+                    placeholder="Majors (e.g., Animation, Modeling)"
+                  />
+                  <Input
+                    value={editedUser.email || ''}
+                    onChange={(e) => setEditedUser({...editedUser, email: e.target.value})}
+                    placeholder="Email"
+                  />
+                  <Input
+                    value={editedUser.location || ''}
+                    onChange={(e) => setEditedUser({...editedUser, location: e.target.value})}
+                    placeholder="Location"
+                  />
+                  <Input
+                    value={editedUser.github || ''}
+                    onChange={(e) => setEditedUser({...editedUser, github: e.target.value})}
+                    placeholder="GitHub URL"
+                  />
+                  <Input
+                    value={editedUser.linkedin || ''}
+                    onChange={(e) => setEditedUser({...editedUser, linkedin: e.target.value})}
+                    placeholder="LinkedIn URL"
+                  />
+                  <Input
+                    value={editedUser.portfolio || ''}
+                    onChange={(e) => setEditedUser({...editedUser, portfolio: e.target.value})}
+                    placeholder="Portfolio URL"
+                  />
+                  <Input
+                    value={(editedUser.skills || []).join(', ')}
+                    onChange={(e) => setEditedUser({...editedUser, skills: e.target.value.split(',').map((s) => s.trim()).filter(Boolean)})}
+                    placeholder="Skills (comma-separated)"
+                  />
                   <div className="flex gap-2">
                     <Button onClick={handleSave} size="sm">Save</Button>
                     <Button onClick={() => setIsEditing(false)} variant="outline" size="sm">
@@ -94,10 +188,52 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                   
                   <div className="flex flex-col gap-2">
                     {isOwnProfile && (
-                      <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit Profile
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit Profile
+                        </Button>
+                        <Sheet>
+                          <SheetTrigger className="inline-flex items-center rounded-md border px-3 py-1 text-sm" onClick={() => setShowInlineTheme(true)}>
+                            <Palette className="mr-2 h-4 w-4" />
+                            Theme
+                          </SheetTrigger>
+                          <SheetContent side="right" className="z-[100]" style={{ width: 360, maxWidth: '90vw', height: '100%', background: theme.colors.cardBackground || '#111827', color: theme.colors.text }}>
+                            <SheetHeader>
+                              <SheetTitle>Profile Theme</SheetTitle>
+                            </SheetHeader>
+                            <div className="p-2 text-xs opacity-70">Theme sidebar</div>
+                            <ProfileThemeEditor
+                              theme={theme}
+                              setTheme={setTheme}
+                              projects={combinedProjects.map(p => ({ id: p.id, title: p.title }))}
+                              onReorder={handleReorder}
+                              onToggleHidden={handleToggleHidden}
+                              onUploadBanner={handleUploadBanner}
+                              onUploadBackground={handleUploadBackground}
+                            />
+                          </SheetContent>
+                        </Sheet>
+                      </div>
+                    )}
+
+                    {showInlineTheme && (
+                      <Card className="mt-4">
+                        <CardHeader>
+                          <CardTitle>Profile Theme</CardTitle>
+                        </CardHeader>
+                        <CardContent className="max-h-[80vh] overflow-y-auto">
+                          <ProfileThemeEditor
+                            theme={theme}
+                            setTheme={setTheme}
+                            projects={combinedProjects.map(p => ({ id: p.id, title: p.title }))}
+                            onReorder={handleReorder}
+                            onToggleHidden={handleToggleHidden}
+                            onUploadBanner={handleUploadBanner}
+                            onUploadBackground={handleUploadBackground}
+                          />
+                        </CardContent>
+                      </Card>
                     )}
                     
                     {canExportPDF && (
@@ -105,12 +241,6 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                         <Download className="mr-2 h-4 w-4" />
                         Export Resume PDF
                       </Button>
-                    )}
-
-                    {isOwnProfile && currentUser?.role === 'admin' && (
-                      <>
-
-                      </>
                     )}
                   </div>
                 </>
@@ -207,15 +337,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                   <BookOpen className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Total Projects</span>
                 </div>
-                <span className="font-semibold">{userProjects.length}</span>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Collaborations</span>
-                </div>
-                <span className="font-semibold">{collaborativeProjects.length}</span>
+                <span className="font-semibold">{combinedProjects.length}</span>
               </div>
               
               <div className="flex items-center justify-between">
@@ -234,20 +356,19 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
         {/* Main Content */}
         <div className="lg:col-span-2">
           <Tabs defaultValue="projects" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="projects">My Projects ({userProjects.length})</TabsTrigger>
-              <TabsTrigger value="collaborations">Collaborations ({collaborativeProjects.length})</TabsTrigger>
-              <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-1">
+              <TabsTrigger value="projects">Projects ({combinedProjects.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="projects">
-              {userProjects.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {userProjects.map((project) => (
+              {visibleProjects.length > 0 ? (
+                <div className="grid gap-6" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(theme.layout.projectColumns, 1), 5)}, minmax(0, 1fr))` }}>
+                  {visibleProjects.map((project) => (
                     <ProjectCard
                       key={project.id}
                       project={project}
                       onClick={onProjectClick}
+                      theme={theme}
                     />
                   ))}
                 </div>
@@ -270,64 +391,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
               )}
             </TabsContent>
 
-            <TabsContent value="collaborations">
-              {collaborativeProjects.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {collaborativeProjects.map((project) => (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      onClick={onProjectClick}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No Collaborations</h3>
-                    <p className="text-muted-foreground">
-                      {isOwnProfile 
-                        ? "Join collaborative projects to work with other students!"
-                        : "This student hasn't collaborated on any projects yet."
-                      }
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
 
-            <TabsContent value="activity">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="border-l-2 border-primary pl-4">
-                      <p className="font-semibold">Project Published</p>
-                      <p className="text-sm text-muted-foreground">
-                        Published "3D Character Animation" • 2 days ago
-                      </p>
-                    </div>
-                    
-                    <div className="border-l-2 border-muted pl-4">
-                      <p className="font-semibold">Collaboration Joined</p>
-                      <p className="text-sm text-muted-foreground">
-                        Joined "VR Experience" project • 1 week ago
-                      </p>
-                    </div>
-                    
-                    <div className="border-l-2 border-muted pl-4">
-                      <p className="font-semibold">Profile Updated</p>
-                      <p className="text-sm text-muted-foreground">
-                        Added new skills and portfolio link • 2 weeks ago
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+
+
           </Tabs>
         </div>
       </div>
