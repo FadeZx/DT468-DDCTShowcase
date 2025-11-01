@@ -12,6 +12,7 @@ import {
 import { SupabaseImage } from './figma/SupabaseImage';
 import "react-responsive-carousel/lib/styles/carousel.min.css";
 import { Carousel } from 'react-responsive-carousel';
+import { AspectRatio } from './ui/aspect-ratio';
 
 interface ProjectPageProps {
   project: any;
@@ -223,29 +224,39 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   galleryMedia.map((m, idx) => (
                     <div key={idx} className="bg-black">
                       {m.type === 'video' ? (
-                        <div className="relative" style={{ paddingTop: '56.25%' }}>
-                          <iframe
-                            src={m.url}
-                            title={m.name || 'Project video'}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="absolute inset-0 w-full h-full"
-                          />
-                        </div>
+                        <AspectRatio ratio={16/9}>
+                          <div className="relative w-full h-full bg-black">
+                            <iframe
+                              src={m.url}
+                              title={m.name || 'Project video'}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              className="absolute inset-0 w-full h-full"
+                            />
+                          </div>
+                        </AspectRatio>
                       ) : (
-                        <SupabaseImage
-                          src={m.url}
-                          alt={m.name || project.title}
-                          className="w-full h-auto object-contain bg-black"
-                          fallbackSrc="/placeholder-project.svg"
-                        />
+                        <AspectRatio ratio={16/9}>
+                          <div className="w-full h-full bg-black flex items-center justify-center">
+                            <SupabaseImage
+                              src={m.url}
+                              alt={m.name || project.title}
+                              className="max-w-full max-h-full object-contain"
+                              fallbackSrc="/placeholder-project.svg"
+                            />
+                          </div>
+                        </AspectRatio>
                       )}
                     </div>
                   ))
                 ) : (
                   placeholderImages.map((src, idx) => (
-                    <div key={idx}>
-                      <img src={src} alt={`Placeholder ${idx + 1}`} />
+                    <div key={idx} className="bg-black">
+                      <AspectRatio ratio={16/9}>
+                        <div className="w-full h-full bg-black flex items-center justify-center">
+                          <img src={src} alt={`Placeholder ${idx + 1}`} className="max-w-full max-h-full object-contain" />
+                        </div>
+                      </AspectRatio>
                     </div>
                   ))
                 )}

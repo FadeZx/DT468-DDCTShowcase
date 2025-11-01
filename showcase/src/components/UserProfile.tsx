@@ -9,10 +9,9 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { ProjectCard } from './ProjectCard';
 import { ProfileThemeEditor, ProfileTheme } from './ProfileThemeEditor';
-import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle } from './ui/sheet';
 import { 
   Edit, Download, Mail, Github, Linkedin, ExternalLink,
-  Calendar, MapPin, Award, BookOpen, Settings, UserPlus, Shield, Palette
+  Calendar, MapPin, Award, BookOpen, Settings, UserPlus, Shield, Palette, X
 } from 'lucide-react';
 
 interface UserProfileProps {
@@ -28,6 +27,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
   const [showInlineTheme, setShowInlineTheme] = useState(false);
+  const [themeSidebarOpen, setThemeSidebarOpen] = useState(false);
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -193,27 +193,10 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                           <Edit className="mr-2 h-4 w-4" />
                           Edit Profile
                         </Button>
-                        <Sheet>
-                          <SheetTrigger className="inline-flex items-center rounded-md border px-3 py-1 text-sm" onClick={() => setShowInlineTheme(true)}>
-                            <Palette className="mr-2 h-4 w-4" />
-                            Theme
-                          </SheetTrigger>
-                          <SheetContent side="right" className="z-[100]" style={{ width: 360, maxWidth: '90vw', height: '100%', background: theme.colors.cardBackground || '#111827', color: theme.colors.text }}>
-                            <SheetHeader>
-                              <SheetTitle>Profile Theme</SheetTitle>
-                            </SheetHeader>
-                            <div className="p-2 text-xs opacity-70">Theme sidebar</div>
-                            <ProfileThemeEditor
-                              theme={theme}
-                              setTheme={setTheme}
-                              projects={combinedProjects.map(p => ({ id: p.id, title: p.title }))}
-                              onReorder={handleReorder}
-                              onToggleHidden={handleToggleHidden}
-                              onUploadBanner={handleUploadBanner}
-                              onUploadBackground={handleUploadBackground}
-                            />
-                          </SheetContent>
-                        </Sheet>
+                        <Button variant="outline" size="sm" onClick={() => setThemeSidebarOpen(true)}>
+                          <Palette className="mr-2 h-4 w-4" />
+                          Theme
+                        </Button>
                       </div>
                     )}
 
@@ -397,6 +380,28 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
           </Tabs>
         </div>
       </div>
+
+      {themeSidebarOpen && (
+        <div className="fixed inset-y-0 right-0 z-[200] w-[360px] max-w-[90vw] border-l shadow-xl" style={{ background: theme.colors.cardBackground || '#111827', color: theme.colors.text }}>
+          <div className="flex items-center justify-between p-4 border-b">
+            <div className="font-semibold">Profile Theme</div>
+            <button onClick={() => setThemeSidebarOpen(false)} className="inline-flex items-center justify-center rounded-md p-2 hover:bg-white/10" aria-label="Close theme">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="h-[calc(100%-56px)] overflow-y-auto p-3">
+            <ProfileThemeEditor
+              theme={theme}
+              setTheme={setTheme}
+              projects={combinedProjects.map(p => ({ id: p.id, title: p.title }))}
+              onReorder={handleReorder}
+              onToggleHidden={handleToggleHidden}
+              onUploadBanner={handleUploadBanner}
+              onUploadBackground={handleUploadBackground}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
