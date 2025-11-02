@@ -1298,6 +1298,261 @@ export default function UploadProjectPage({
     );
   }
 
+  // One-page edit mode (itch.io-like)
+  if (editMode) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-5xl mx-auto px-4 space-y-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Edit Your Project</h1>
+            <p className="text-gray-600">Manage media, details, files, and settings in one place</p>
+          </div>
+
+          {/* Top gallery (Steam/itch-like) */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="relative w-full bg-black">
+                <AspectRatio ratio={16/9}>
+                  <div className="relative w-full h-full bg-black">
+                    {galleryMedia.length > 0 ? (
+                      galleryMedia[activeIndex]?.type === 'video' ? (
+                        <iframe
+                          src={galleryMedia[activeIndex].url}
+                          title={galleryMedia[activeIndex].name || 'Project video'}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="absolute inset-0 w-full h-full"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                          <SupabaseImage
+                            src={galleryMedia[activeIndex].url}
+                            alt={galleryMedia[activeIndex].name || 'Image'}
+                            className="max-w-full max-h-full object-contain"
+                            fallbackSrc="/placeholder-project.svg"
+                          />
+                        </div>
+                      )
+                    ) : (
+                      <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                        <img src="/placeholder-project.svg" alt="Placeholder" className="max-w-full max-h-full object-contain" />
+                      </div>
+                    )}
+
+                    {galleryMedia.length > 1 && (
+                      <>
+                        <button type="button" aria-label="Previous" onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60">
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button type="button" aria-label="Next" onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60">
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </AspectRatio>
+              </div>
+
+              {galleryMedia.length > 0 && (
+                <div className="relative w-full bg-muted/30">
+                  <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                  <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
+
+                  <div ref={thumbRef} className="overflow-x-auto overflow-y-hidden whitespace-nowrap p-3">
+                    <div className="inline-flex items-stretch gap-2">
+                      {galleryMedia.map((m, idx) => (
+                        <button key={idx} type="button" onClick={() => setActiveIndex(idx)} className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`} aria-label={`Go to media ${idx + 1}`}>
+                          <img src={(m as any).thumb || m.url || '/placeholder-project.svg'} alt={m.name || `Media ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
+                          {m.type === 'video' && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <Play className="text-white w-6 h-6 drop-shadow" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button type="button" aria-label="Scroll thumbnails left" onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: -240, behavior: 'smooth' }); }} className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60">
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button type="button" aria-label="Scroll thumbnails right" onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: 240, behavior: 'smooth' }); }} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60">
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              {galleryMedia.length > 0 && projectData.media.length > 0 && projectData.media[activeIndex]?.type === 'image' && (
+                <div className="p-3 flex items-center gap-3">
+                  <Button size="sm" variant="outline" onClick={() => setAsCover(projectData.media[activeIndex].id)}>Set as Cover</Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Details */}
+          <Card>
+            <CardHeader><CardTitle>Project Details</CardTitle></CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Project Title *</label>
+                <Input placeholder="Enter your project title" value={projectData.title} onChange={(e) => setProjectData(prev => ({ ...prev, title: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Short Description *</label>
+                <Input placeholder="A brief description" value={projectData.shortDescription} onChange={(e) => setProjectData(prev => ({ ...prev, shortDescription: e.target.value }))} maxLength={100} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Category *</label>
+                <select className="w-full p-3 border border-gray-300 rounded-lg" value={projectData.category} onChange={(e) => { setProjectData(prev => ({ ...prev, category: e.target.value })); if (e.target.value !== 'Other') setCustomCategory(''); }}>
+                  <option value="">Select a category</option>
+                  {CATEGORIES.map(category => (<option key={category} value={category}>{category}</option>))}
+                  <option value="Other">Other</option>
+                </select>
+                {projectData.category === 'Other' && (
+                  <div className="mt-2"><Input placeholder="Please specify" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} /></div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Full Description</label>
+                <Textarea value={projectData.fullDescription} onChange={(e) => setProjectData(prev => ({ ...prev, fullDescription: e.target.value }))} rows={6} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Tags</label>
+                <div className="flex gap-2 mb-2">
+                  <Input placeholder="Add a tag" value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addTag()} />
+                  <Button onClick={addTag} size="sm"><Plus className="w-4 h-4" /></Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {projectData.tags.map(tag => (
+                    <Badge key={tag} variant="secondary" className="flex items-center gap-1">{tag}<X className="w-3 h-3 cursor-pointer" onClick={() => removeTag(tag)} /></Badge>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Media & Files */}
+          <Card>
+            <CardHeader><CardTitle>Media & Files</CardTitle></CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Gallery Images</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
+                  <input id="img-upload" type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const input = e.currentTarget; const files = e.target.files; (async () => { await handleUpload(files, 'image'); input.value=''; })(); }} />
+                  <Button asChild variant="outline"><label htmlFor="img-upload">Upload Images</label></Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Add Video (YouTube/Vimeo)</label>
+                <div className="flex gap-2 mb-6">
+                  <Input placeholder="Paste video URL" value={videoInput} onChange={e=>setVideoInput(e.target.value)} />
+                  <Button onClick={addVideoByUrl}><Plus className="w-4 h-4"/></Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Project Files</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center mb-4">
+                  <input id="file-upload" type="file" multiple className="hidden" onChange={(e) => { const input = e.currentTarget; const files = e.target.files; (async () => { await handleUpload(files, 'file'); input.value=''; })(); }} />
+                  <Button asChild variant="outline"><label htmlFor="file-upload">Upload Files</label></Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Attach File via URL</label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input placeholder="Display name" value={externalFileName} onChange={(e) => setExternalFileName(e.target.value)} />
+                  <Input placeholder="https://example.com/your-file" value={externalFileUrl} onChange={(e) => setExternalFileUrl(e.target.value)} />
+                  <Button type="button" onClick={addExternalFile}>Attach</Button>
+                </div>
+              </div>
+
+              {/* Sortable gallery */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                {[...projectData.media].sort((a,b)=>a.order-b.order).map((m, idx) => (
+                  <div key={m.id} draggable onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', String(idx)); }} onDragOver={(e)=>e.preventDefault()} onDrop={(e)=>{ const from = Number(e.dataTransfer.getData('text/plain')); moveMedia(from, idx); }} className="p-3 rounded-lg border bg-white flex gap-3 items-start">
+                    <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center relative">
+                      {m.type === 'image' ? (
+                        <SupabaseImage src={(m.url || (typeof m.path==='string' && m.path.startsWith('projects/') ? m.path : '') || '') as string} alt={m.name || 'Media item'} className="w-full h-full object-cover" fallbackSrc="/placeholder-project.svg" />
+                      ) : m.type === 'video' ? (
+                        <span className="text-xs">Video</span>
+                      ) : (
+                        <span className="text-xs">File</span>
+                      )}
+                      {m.status === 'uploading' && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>
+                      )}
+                      {m.status === 'error' && (
+                        <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center text-white text-xs">Failed</div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Badge variant="secondary">{m.type}</Badge>
+                        {m.isCover && <Badge>Cover</Badge>}
+                        {m.status && <Badge variant="outline">{m.status}</Badge>}
+                      </div>
+                      <div className="text-xs text-gray-600 truncate">{m.name || m.url || m.path}</div>
+                      <div className="flex gap-2 mt-2">
+                        {m.type === 'image' && (
+                          <label className="flex items-center gap-2 text-xs">
+                            <input type="checkbox" checked={!!m.isCover} onChange={(e)=>{ if(e.target.checked) setAsCover(m.id); }} />
+                            Cover
+                          </label>
+                        )}
+                        <Button size="sm" variant="outline" onClick={()=>removeMedia(m.id)}>Remove</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Team & Settings */}
+          <Card>
+            <CardHeader><CardTitle>Team & Settings</CardTitle></CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Visibility</label>
+                <div className="space-y-4">
+                  <label className="flex items-center gap-2"><input type="radio" checked={projectData.isPublic} onChange={() => setProjectData(prev => ({ ...prev, isPublic: true }))} /> Public</label>
+                  <label className="flex items-center gap-2"><input type="radio" checked={!projectData.isPublic} onChange={() => setProjectData(prev => ({ ...prev, isPublic: false }))} /> Private</label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Members</label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input placeholder="Enter email or username to add member" value={newMember} onChange={(e) => setNewMember(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addMember()} />
+                  <Button onClick={addMember} size="sm" className="sm:w-auto"><Plus className="w-4 h-4" />Add Member</Button>
+                </div>
+                {projectData.members.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {projectData.members.map(member => (
+                      <div key={member.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div className="text-sm"><span className="font-medium">{member.name}</span>{member.email && (<span className="text-xs text-gray-500 block">{member.email}</span>)}<span className="text-xs text-gray-500 ml-2 capitalize">({member.role || 'editor'})</span></div>
+                        <Button variant="outline" size="sm" onClick={() => removeMember(member.id)}><X className="w-4 h-4" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button onClick={handleSubmit} disabled={isUploading} className="flex items-center gap-2">
+              {isUploading ? (<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving...</>) : (<><Upload className="w-4 h-4" />Save Changes</>)}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
