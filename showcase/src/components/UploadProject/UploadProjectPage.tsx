@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -6,7 +6,9 @@ import { Textarea } from '../ui/textarea-simple';
 import { Badge } from '../ui/badge-simple';
 import { Progress } from '../ui/progress-simple';
 import supabase from '../../utils/supabase/client';
-import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
+import { uploadProjectFile, deleteProjectFile, listProjectStorage, getFileUrl } from '../../utils/fileStorage';
+import { AspectRatio } from '../ui/aspect-ratio';
+import { SupabaseImage } from '../figma/SupabaseImage';
 import {
   Upload,
   FileText,
@@ -16,7 +18,10 @@ import {
   ArrowRight,
   Plus,
   X,
-  Users
+  Users,
+  Play,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface UploadProjectPageProps {
@@ -126,6 +131,26 @@ export default function UploadProjectPage({
   const [externalFileName, setExternalFileName] = useState('');
   const [externalFileUrl, setExternalFileUrl] = useState('');
 
+  // Steam/itch-like viewer state for Edit page
+  const [activeIndex, setActiveIndex] = useState(0);
+  const thumbRef = useRef<HTMLDivElement>(null);
+
+  const galleryMedia = [...projectData.media]
+    .sort((a,b)=>a.order-b.order)
+    .filter(m => m.type === 'image' || m.type === 'video')
+    .map((m) => {
+      const ensureYoutubeThumb = (u: string): string => {
+        try {
+          const idMatch = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+          const id = idMatch ? idMatch[1] : '';
+          return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
+        } catch { return ''; }
+      };
+      const url = (m.url || (typeof m.path === 'string' ? m.path : '')) as string;
+      const thumb = m.type === 'image' ? url : ensureYoutubeThumb(url);
+      return { type: m.type as 'image' | 'video', url, name: m.name, thumb: thumb || '/placeholder-project.svg', id: m.id };
+    });
+
   const progress = (currentStep / STEPS.length) * 100;
 
   // Load existing project data in edit mode
@@ -198,22 +223,20 @@ export default function UploadProjectPage({
 
         let mediaItems: MediaItem[] = [];
         try {
-          const { data: filesData } = await supabase
+          // 1) Load DB records (authoritative metadata)
+          const { data: filesData, error: filesErr } = await supabase
             .from('project_files')
             .select('*')
             .eq('project_id', editProjectId)
             .order('created_at', { ascending: true });
+          if (filesErr) console.warn('[Edit] project_files fetch error:', filesErr);
 
-          mediaItems = (filesData || []).map((file, index) => ({
+          const dbItems: MediaItem[] = (filesData || []).map((file, index) => ({
             id: file.id || generateUUID(),
-            type: file.file_type === 'image'
-              ? 'image'
-              : file.file_type === 'video'
-                ? 'video'
-                : 'file',
+            type: file.file_type === 'image' ? 'image' : file.file_type === 'video' ? 'video' : 'file',
             name: file.file_name || undefined,
-            url: file.file_url,
-            path: file.file_path,
+            url: file.file_url || '',
+            path: file.file_path || null,
             size: file.file_size || undefined,
             mimeType: file.mime_type || undefined,
             fileType: file.file_type || undefined,
@@ -221,6 +244,34 @@ export default function UploadProjectPage({
             isCover: !!file.is_cover,
             order: index
           }));
+
+          // 2) Also load any orphan files directly from storage under the project's folder
+          const storageFiles = await listProjectStorage(editProjectId);
+          const storageItems: MediaItem[] = (storageFiles || []).map((obj, idx) => {
+            const path = obj.path;
+            const lower = path.toLowerCase();
+            const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(lower);
+            const isVideo = /\.(mp4|webm|ogg|mov|m4v)$/.test(lower);
+            const type: MediaType = isImage ? 'image' : isVideo ? 'video' : 'file';
+            return {
+              id: `stor-${idx}-${path}`,
+              type,
+              name: obj.name,
+              url: getFileUrl(path),
+              path,
+              fileType: isImage ? 'image' : isVideo ? 'video' : 'document',
+              source: 'storage',
+              order: dbItems.length + idx
+            } as MediaItem;
+          });
+
+          // 3) Merge: prefer DB entries (they carry is_cover, mime, etc.). Deduplicate by path.
+          const byPath = new Map<string, MediaItem>();
+          for (const m of [...dbItems, ...storageItems]) {
+            const key = (m.path || m.url || '').replace(/^external:/, '');
+            if (!byPath.has(key)) byPath.set(key, m);
+          }
+          mediaItems = Array.from(byPath.values()).sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
         } catch (filesError) {
           console.error('Error loading project files:', filesError);
         }
@@ -253,6 +304,18 @@ export default function UploadProjectPage({
           console.error('Error loading members:', memberError);
         }
 
+        const coverCandidate = mediaItems.find(m => m.isCover && m.type === 'image') || (project.cover_image ? ({
+          id: generateUUID(),
+          type: 'image',
+          name: 'Cover',
+          url: project.cover_image,
+          path: project.cover_image?.startsWith('projects/') ? project.cover_image : `external:${project.cover_image}`,
+          fileType: 'image',
+          source: project.cover_image?.startsWith('projects/') ? 'storage' : 'external',
+          isCover: true,
+          order: 0
+        } as any) : null);
+
         setProjectData(prev => ({
           ...prev,
           title: project.title || '',
@@ -262,6 +325,7 @@ export default function UploadProjectPage({
           tags,
           price: project.price || 0,
           isPublic: project.status === 'published',
+          coverImage: coverCandidate || null,
           media: mediaItems,
           members: memberEntries
         }));
@@ -799,6 +863,120 @@ export default function UploadProjectPage({
       case 2:
         return (
           <div className="space-y-6">
+            {/* Steam/itch-like live gallery preview */}
+            <Card>
+              <CardContent className="p-0">
+                <div className="relative w-full bg-black">
+                  <AspectRatio ratio={16/9}>
+                    <div className="relative w-full h-full bg-black">
+                      {galleryMedia.length > 0 ? (
+                        galleryMedia[activeIndex]?.type === 'video' ? (
+                          <iframe
+                            src={galleryMedia[activeIndex].url}
+                            title={galleryMedia[activeIndex].name || 'Project video'}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                            className="absolute inset-0 w-full h-full"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                            <SupabaseImage
+                              src={galleryMedia[activeIndex].url}
+                              alt={galleryMedia[activeIndex].name || 'Image'}
+                              className="max-w-full max-h-full object-contain"
+                              fallbackSrc="/placeholder-project.svg"
+                            />
+                          </div>
+                        )
+                      ) : (
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                          <img src="/placeholder-project.svg" alt="Placeholder" className="max-w-full max-h-full object-contain" />
+                        </div>
+                      )}
+
+                      {galleryMedia.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Previous"
+                            onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Next"
+                            onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                          >
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </AspectRatio>
+                </div>
+
+                {galleryMedia.length > 0 && (
+                  <div className="relative w-full bg-muted/30">
+                    <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                    <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
+
+                    <div ref={thumbRef} className="overflow-x-auto overflow-y-hidden whitespace-nowrap p-3">
+                      <div className="inline-flex items-stretch gap-2">
+                        {galleryMedia.map((m, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setActiveIndex(idx)}
+                            className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
+                            aria-label={`Go to media ${idx + 1}`}
+                          >
+                            <img
+                              src={(m as any).thumb || m.url || '/placeholder-project.svg'}
+                              alt={m.name || `Media ${idx + 1}`}
+                              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                            />
+                            {m.type === 'video' && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <Play className="text-white w-6 h-6 drop-shadow" />
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      aria-label="Scroll thumbnails left"
+                      onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: -240, behavior: 'smooth' }); }}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Scroll thumbnails right"
+                      onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: 240, behavior: 'smooth' }); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+
+                {galleryMedia.length > 0 && projectData.media.length > 0 && projectData.media[activeIndex]?.type === 'image' && (
+                  <div className="p-3 flex items-center gap-3">
+                    <Button size="sm" variant="outline" onClick={() => setAsCover(projectData.media[activeIndex].id)}>
+                      Set as Cover
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Cover selection is now part of gallery items below (use the checkbox on an image). */}
 
             {/* Gallery images uploader */}
@@ -883,10 +1061,11 @@ export default function UploadProjectPage({
                 >
                   <div className="w-24 h-16 shrink-0 bg-gray-100 rounded overflow-hidden flex items-center justify-center relative">
                     {m.type === 'image' ? (
-                      <img 
-                        src={m.url || '/placeholder-project.svg'} 
-                        className="w-full h-full object-cover" 
+                      <SupabaseImage
+                        src={(m.url || (typeof m.path==='string' && m.path.startsWith('projects/') ? m.path : '') || '') as string}
                         alt={m.name || 'Media item'}
+                        className="w-full h-full object-cover"
+                        fallbackSrc="/placeholder-project.svg"
                       />
                     ) : m.type === 'video' ? (
                       <span className="text-xs">Video</span>
@@ -910,7 +1089,7 @@ export default function UploadProjectPage({
                       {m.isCover && <Badge>Cover</Badge>}
                       {m.status && <Badge variant="outline">{m.status}</Badge>}
                     </div>
-                    <div className="text-xs text-gray-600 truncate">{m.name || m.url}</div>
+                    <div className="text-xs text-gray-600 truncate">{m.name || m.url || m.path}</div>
                     <div className="flex gap-2 mt-2">
                       {m.type === 'image' && (
                         <label className="flex items-center gap-2 text-xs">

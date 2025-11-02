@@ -10,8 +10,6 @@ import {
   Github, ExternalLink, Play, Users, Edit, Trash2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
-import "react-responsive-carousel/lib/styles/carousel.min.css";
-import { Carousel } from 'react-responsive-carousel';
 import { AspectRatio } from './ui/aspect-ratio';
 
 interface ProjectPageProps {
@@ -86,12 +84,35 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     }
   };
 
-  const canEdit = currentUser && (
+  const [isCollaborator, setIsCollaborator] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    async function checkCollaborator() {
+      try {
+        if (!currentUser?.id) { if (mounted) setIsCollaborator(false); return; }
+        const { data } = await supabase
+          .from('project_collaborators')
+          .select('user_id')
+          .eq('project_id', project.id)
+          .eq('user_id', currentUser.id)
+          .limit(1);
+        if (!mounted) return;
+        setIsCollaborator(!!(data && data.length));
+      } catch {
+        if (mounted) setIsCollaborator(false);
+      }
+    }
+    checkCollaborator();
+    return () => { mounted = false; };
+  }, [project.id, currentUser?.id, supabase]);
+
+  const canEdit = !!currentUser && (
     currentUser.id === project.author_id ||
-    currentUser.role === 'admin'
+    currentUser.role === 'admin' ||
+    isCollaborator
   );
 
-  const canDelete = currentUser && (
+  const canDelete = !!currentUser && (
     currentUser.id === project.author_id ||
     currentUser.role === 'admin'
   );
@@ -207,60 +228,59 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
           {/* Steam-like hero media carousel with custom thumbnail strip */}
           <Card>
             <CardContent className="p-0">
-              {/* Main media carousel */}
-              <Carousel
-                selectedItem={activeIndex}
-                onChange={(index) => setActiveIndex(index)}
-                showThumbs={false}
-                showIndicators={true}
-                showStatus={false}
-                infiniteLoop
-                emulateTouch
-                swipeable
-                useKeyboardArrows
-                dynamicHeight={false}
-              >
-                {galleryMedia.length > 0 ? (
-                  galleryMedia.map((m, idx) => (
-                    <div key={idx} className="bg-black">
-                      {m.type === 'video' ? (
-                        <AspectRatio ratio={16/9}>
-                          <div className="relative w-full h-full bg-black">
-                            <iframe
-                              src={m.url}
-                              title={m.name || 'Project video'}
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              className="absolute inset-0 w-full h-full"
-                            />
-                          </div>
-                        </AspectRatio>
+              {/* Main media viewer */}
+              <div className="relative w-full bg-black">
+                <AspectRatio ratio={16/9}>
+                  <div className="relative w-full h-full bg-black">
+                    {galleryMedia.length > 0 ? (
+                      galleryMedia[activeIndex]?.type === 'video' ? (
+                        <iframe
+                          src={galleryMedia[activeIndex].url}
+                          title={galleryMedia[activeIndex].name || 'Project video'}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="absolute inset-0 w-full h-full"
+                        />
                       ) : (
-                        <AspectRatio ratio={16/9}>
-                          <div className="w-full h-full bg-black flex items-center justify-center">
-                            <SupabaseImage
-                              src={m.url}
-                              alt={m.name || project.title}
-                              className="max-w-full max-h-full object-contain"
-                              fallbackSrc="/placeholder-project.svg"
-                            />
-                          </div>
-                        </AspectRatio>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  placeholderImages.map((src, idx) => (
-                    <div key={idx} className="bg-black">
-                      <AspectRatio ratio={16/9}>
-                        <div className="w-full h-full bg-black flex items-center justify-center">
-                          <img src={src} alt={`Placeholder ${idx + 1}`} className="max-w-full max-h-full object-contain" />
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                          <SupabaseImage
+                            src={galleryMedia[activeIndex].url}
+                            alt={galleryMedia[activeIndex].name || project.title}
+                            className="max-w-full max-h-full object-contain"
+                            fallbackSrc="/placeholder-project.svg"
+                          />
                         </div>
-                      </AspectRatio>
-                    </div>
-                  ))
-                )}
-              </Carousel>
+                      )
+                    ) : (
+                      <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                        <img src={placeholderImages[0]} alt="Placeholder" className="max-w-full max-h-full object-contain" />
+                      </div>
+                    )}
+
+                    {/* Nav buttons */}
+                    {galleryMedia.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          aria-label="Previous"
+                          onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Next"
+                          onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </AspectRatio>
+              </div>
 
               {/* Steam-like thumbnail strip */}
               {galleryMedia.length > 0 && (

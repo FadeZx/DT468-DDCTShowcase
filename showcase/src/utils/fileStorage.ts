@@ -150,6 +150,36 @@ async function createThumbnail(file: File, maxWidth: number): Promise<File> {
   });
 }
 
+export async function listAllInPrefix(prefix: string) {
+  const bucket = 'project-files';
+  const results: Array<{ path: string; name: string; id?: string; updated_at?: string; created_at?: string; last_accessed_at?: string; metadata?: any; size?: number; type?: 'file' | 'folder'; }>> = [];
+  async function listDir(path: string) {
+    const { data, error } = await supabase.storage.from(bucket).list(path, { limit: 1000 });
+    if (error) return;
+    for (const item of data || []) {
+      const fullPath = path ? `${path}/${item.name}` : item.name;
+      if (item.id) {
+        // supabase-js v2 returns Object with type property
+      }
+      // Supabase list doesn't return size in folders; we keep as is
+      // We need to distinguish files vs folders via item.metadata == null and possibility of item.name containing '.'; but Supabase returns item as { name, id?, updated_at?, created_at?, last_accessed_at?, metadata? }
+      const isFolder = !item.id && !item.metadata; // heuristic; folders have no id/metadata
+      if (isFolder) {
+        await listDir(fullPath);
+      } else {
+        results.push({ path: fullPath, name: item.name, id: (item as any).id, updated_at: (item as any).updated_at, created_at: (item as any).created_at, last_accessed_at: (item as any).last_accessed_at, metadata: (item as any).metadata, size: (item as any).metadata?.size, type: 'file' });
+      }
+    }
+  }
+  await listDir(prefix.replace(/^\/+|\/+$|^\.+/g, ''));
+  return results;
+}
+
+export async function listProjectStorage(projectId: string) {
+  const prefix = `projects/${projectId}`;
+  return listAllInPrefix(prefix);
+}
+
 export async function deleteProjectFile(filePath: string) {
   try {
     const bucket = 'project-files';

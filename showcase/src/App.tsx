@@ -47,13 +47,14 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
   );
 }
 
-function ProjectEditorWrapper({ currentUser, onProjectUpdated }: {
+function ProjectEditorWrapper({ currentUser, onProjectUpdated, allProjects }: {
   currentUser: any;
   onProjectUpdated: () => void;
+  allProjects: any[];
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   // Find the project from in-memory list to support mock/demo mode
-  const initialProject = projects.find((p: any) => p.id === projectId);
+  const initialProject = (allProjects || []).find((p: any) => p.id === projectId);
 
   return (
     <UploadProjectPage
@@ -318,6 +319,7 @@ export default function App() {
                   <ProjectEditorWrapper
                     currentUser={currentUser}
                     onProjectUpdated={loadData}
+                    allProjects={projects}
                   />
                 ) : (
                   <div className="max-w-7xl mx-auto px-6 py-8">
