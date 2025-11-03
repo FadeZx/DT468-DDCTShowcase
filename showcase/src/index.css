@@ -4,8 +4,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import 'slick-carousel/slick/slick.css';
-@import 'slick-carousel/slick/slick-theme.css';
 
 /* Force fixed-size equal thumbnails inside slick */
 .thumb-slider .slick-list {

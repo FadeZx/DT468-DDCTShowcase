@@ -15,13 +15,15 @@ import { EventsPage } from './components/EventsPage';
 import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
 import supabase from './utils/supabase/client';
+import { getProjectLikeCounts } from './utils/projectLikes';
 
 // Wrapper component for ProjectPage to handle dynamic project lookup
-function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject }: {
+function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject, onProjectUpdate }: {
   projects: any[];
   currentUser: any;
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
+  onProjectUpdate: () => void;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -43,6 +45,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
       supabase={supabase}
+      onProjectUpdate={onProjectUpdate}
     />
   );
 }
@@ -150,8 +153,12 @@ export default function App() {
           }
         }
 
+        // Fetch like counts for all projects (reuse projectIds from above)
+        const likeCounts = await getProjectLikeCounts(supabase, projectIds);
+
         const supabaseProjects = (rows || []).map(p => {
           const author = owners.find(o => o.id === p.owner_id);
+          const likeCount = likeCounts[p.id] || 0;
           return {
             id: p.id,
             title: p.title,
@@ -166,7 +173,7 @@ export default function App() {
             cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
             views: 0,
             downloads: 0,
-            likes: 0,
+            likes: likeCount,
             tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
             author: author ? {
               id: author.id,
@@ -179,7 +186,7 @@ export default function App() {
               avatar: null,
               year: 'Unknown'
             },
-            stats: { views: 0, downloads: 0, likes: 0 },
+            stats: { views: 0, downloads: 0, likes: likeCount },
             media: { all: [], images: [], videos: [], downloads: [] },
             members: []
           };
@@ -265,8 +272,88 @@ export default function App() {
     navigate('/events');
   };
 
-  const loadData = () => {
-    // No-op: mock data removed, rely on Supabase-backed refreshes if needed.
+  const loadData = async () => {
+    // Reload projects to refresh like counts
+    try {
+      const { data: rows, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      
+      const ownerIds = Array.from(new Set((rows || []).map(r => r.owner_id).filter(Boolean)));
+      let owners: any[] = [];
+      if (ownerIds.length) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, email, avatar, year')
+          .in('id', ownerIds);
+        owners = profiles || [];
+      }
+      
+      const projectIds = (rows || []).map(r => r.id);
+      let coverMap: Record<string, string> = {};
+      if (projectIds.length) {
+        const { data: files } = await supabase
+          .from('project_files')
+          .select('project_id,file_url,file_path,file_type,is_cover,created_at')
+          .in('project_id', projectIds)
+          .eq('file_type', 'image')
+          .order('created_at', { ascending: true });
+        const grouped: Record<string, any[]> = {};
+        (files || []).forEach(f => { (grouped[f.project_id] ||= []).push(f); });
+        for (const pid of Object.keys(grouped)) {
+          const arr = grouped[pid];
+          const coverFirst = [...arr].sort((a,b) => (b.is_cover?1:0)-(a.is_cover?1:0));
+          const chosen = coverFirst[0];
+          if (chosen) {
+            coverMap[pid] = (chosen.file_path?.startsWith('projects/') ? chosen.file_path : '') || chosen.file_url || '';
+          }
+        }
+      }
+
+      const likeCounts = await getProjectLikeCounts(supabase, projectIds);
+
+      const supabaseProjects = (rows || []).map(p => {
+        const author = owners.find(o => o.id === p.owner_id);
+        const likeCount = likeCounts[p.id] || 0;
+        return {
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          long_description: p.long_description || '',
+          category: p.category || 'Uncategorized',
+          featured: false,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+          status: p.status || 'published',
+          author_id: p.owner_id,
+          cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
+          views: 0,
+          downloads: 0,
+          likes: likeCount,
+          tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
+          author: author ? {
+            id: author.id,
+            name: author.name || author.email || 'Unknown',
+            avatar: author.avatar || null,
+            year: author.year || 'Unknown'
+          } : {
+            id: p.owner_id,
+            name: 'Unknown',
+            avatar: null,
+            year: 'Unknown'
+          },
+          stats: { views: 0, downloads: 0, likes: likeCount },
+          media: { all: [], images: [], videos: [], downloads: [] },
+          members: []
+        };
+      });
+      setProjects(supabaseProjects);
+    } catch (e) {
+      console.warn('Failed to reload projects', e);
+    }
   };
 
   return (
@@ -310,7 +397,7 @@ export default function App() {
                     navigate(`/projects/${projectId}/edit`);
                   }}
                   onDeleteProject={handleDeleteProject}
-          
+                  onProjectUpdate={loadData}
                 />
               } />
 

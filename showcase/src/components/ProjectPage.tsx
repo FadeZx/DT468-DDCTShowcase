@@ -12,6 +12,8 @@ import {
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
+import { ProjectComments } from './ProjectComments';
+import { useProjectLikes } from '../hooks/useProjectLikes';
 
 interface ProjectPageProps {
   project: any;
@@ -20,10 +22,10 @@ interface ProjectPageProps {
   onEditProject?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => void;
   supabase: any;
+  onProjectUpdate?: () => void;
 }
 
-export function ProjectPage({ project, onBack, currentUser, onEditProject, onDeleteProject, supabase }: ProjectPageProps) {
-  const [isLiked, setIsLiked] = useState(false);
+export function ProjectPage({ project, onBack, currentUser, onEditProject, onDeleteProject, supabase, onProjectUpdate }: ProjectPageProps) {
   const [activeTab, setActiveTab] = useState('overview');
   const [projectFiles, setProjectFiles] = useState<any[]>(project.media?.all || project.media || []);
   const [loading, setLoading] = useState(!(project.media?.all?.length || project.media?.length));
@@ -42,6 +44,14 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   const sliderRef = useRef<any>(null);
   const attemptedFetchRef = useRef(false);
   const sliderSettings = { infinite: false, slidesToShow: 3, slidesToScroll: 1, arrows: false, swipeToSlide: true } as const;
+
+  // Use the project likes hook
+  const { likesCount, isLiked, loading: likesLoading, toggleLike } = useProjectLikes({
+    projectId: project.id,
+    currentUser,
+    supabase,
+    onLikeChange: onProjectUpdate
+  });
 
 
   useEffect(() => {
@@ -355,10 +365,11 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
 
           {/* Project Details */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="files">Files</TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="comments">Comments</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 mt-6">
@@ -532,6 +543,14 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <TabsContent value="comments" className="mt-6">
+              <ProjectComments 
+                projectId={project.id}
+                currentUser={currentUser}
+                supabase={supabase}
+              />
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -559,11 +578,12 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => setIsLiked(!isLiked)}
-                  className={isLiked ? 'text-red-500 border-red-500' : ''}
+                  onClick={toggleLike}
+                  disabled={!currentUser || likesLoading}
+                  className={isLiked ? 'text-red-500 border-red-500 hover:text-red-600 hover:border-red-600' : ''}
                 >
-                  <Heart className={`mr-2 h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
-                  {isLiked ? 'Liked' : 'Like'}
+                  <Heart className={`mr-2 h-4 w-4 transition-all ${isLiked ? 'fill-current' : ''}`} />
+                  {isLiked ? 'Liked' : 'Like'} ({likesCount})
                 </Button>
               </div>
               
@@ -601,7 +621,9 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <Heart className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Likes</span>
                 </div>
-                <span className="font-semibold">{project.likes || 0}</span>
+                <span className="font-semibold">
+                  {likesLoading ? '...' : likesCount}
+                </span>
               </div>
               
               <Separator />

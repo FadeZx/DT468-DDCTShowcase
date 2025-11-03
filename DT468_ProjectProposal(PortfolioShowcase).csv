@@ -1,0 +1,33 @@
+Website DDCT Portfolio Showcase,,,,
+No.,User Role,Required Function,Details,
+1,Student,Project pages ,"1. Can create, edit, and delete project pages by category.
+2. Can upload files, including:
+  • Game builds (.zip)
+  • Media files (.png, .jpg, .mp4)
+  • External links (e.g., YouTube, Google Drive)
+3. Can view project pages:
+  • Game projects through WebGL builds
+  • Animation projects through embedded video clips
+  • Concept art or design portfolios (e.g., JPEG/PNG galleries, PDF)
+4. Can provide feedback or comment on other students’ projects.
+5. Can set tags for projects (e.g., Action, 3D, Year 3, Thesis). (Low piority)
+6. Can download project files via provided links.",
+,,Personal profile,"Can create, edit, view, and export personal profile information (name, profile picture, biography, project list, contact info, etc.).",
+,,Invite collaborate,"Can invite other students as collaborators with specific edit permissions on selected project pages (e.g., editing description, uploading additional media, or managing tags).",
+2,Partners,Project pages / Personal profile,"1.Access and browse all student projects in Project pages 
+2.View personal information ,export one pager summarized reports as PDF/Excel",
+,,Provide feedback / comments,Leave a feedback or comment on student projects in Project pages ,
+3,Visitor,Project pages / Personal profile,"1.Can view student projects and showcase pages, including project descriptions, images, downloadable media, and interactive WebGL build demos.
+2.Can copy/share links to projects and download project files (if download is enabled by the project owner).
+3.Can view student profiles with basic information only (e.g., name, profile picture, contact info, and list of showcased projects).",
+,,Filter/search,"Can filter or search projects by tags, categories, or year.",
+4,Admin,Manage accounts ,"Full account management system, including:
+• Create new accounts
+• Delete accounts
+• Reset passwords for students and partners.",
+,,Manage Project pages,"1. Can create, edit, and delete any project page.
+2. Can add or remove collaborators from project pages.",
+,,Catagories/tags ,"Can add, edit, and delete categories and tags to maintain an organized project database.",
+,,Analytics Dashboard ,"Can view analytics of projects by year, category, tags, and type. Provides insights into project distribution and participation trends.",
+,,Export analytics reports,"Generate reports (Excel/PDF) for institutional use (most create project by catagories,Most views,Projects by tags)",
+,,Create new page ,"Can create new showcase event pages (e.g., Game Jam, Thesis Showcase) and select student projects to be highlighted.",

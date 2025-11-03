@@ -175,7 +175,43 @@ for delete using (
   )
 );
 
--- === 5) STORAGE BUCKET + POLICIES (safe; no ALTER on storage.objects) ===
+-- === 5) PROJECT_COMMENTS ===
+create table if not exists public.project_comments (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references public.projects(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  parent_id uuid references public.project_comments(id) on delete cascade,
+  content text not null,
+  is_edited boolean default false,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.project_comments enable row level security;
+
+drop policy if exists "Comments public read" on public.project_comments;
+create policy "Comments public read" on public.project_comments for select using (true);
+
+drop policy if exists "Comments auth insert" on public.project_comments;
+create policy "Comments auth insert" on public.project_comments
+for insert
+with check (auth.uid() = user_id);
+
+drop policy if exists "Comments owner update" on public.project_comments;
+create policy "Comments owner update" on public.project_comments
+for update using (auth.uid() = user_id);
+
+drop policy if exists "Comments owner delete" on public.project_comments;
+create policy "Comments owner delete" on public.project_comments
+for delete using (auth.uid() = user_id);
+
+drop policy if exists "Comments admin delete" on public.project_comments;
+create policy "Comments admin delete" on public.project_comments
+for delete using (
+  exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+);
+
+-- === 6) STORAGE BUCKET + POLICIES (safe; no ALTER on storage.objects) ===
 -- Create bucket (idempotent)
 do $$
 begin
