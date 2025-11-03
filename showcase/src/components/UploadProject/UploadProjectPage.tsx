@@ -246,7 +246,7 @@ export default function UploadProjectPage({
           }));
 
           // 2) Also load any orphan files directly from storage under the project's folder
-          const storageFiles = await listProjectStorage(editProjectId);
+          const storageFiles = await listProjectStorage(editProjectId!);
           const storageItems: MediaItem[] = (storageFiles || []).map((obj, idx) => {
             const path = obj.path;
             const lower = path.toLowerCase();
@@ -930,13 +930,13 @@ export default function UploadProjectPage({
                             key={idx}
                             type="button"
                             onClick={() => setActiveIndex(idx)}
-                            className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
+                            className={`group relative w-[160px] h-[90px] flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
                             aria-label={`Go to media ${idx + 1}`}
                           >
                             <img
                               src={(m as any).thumb || m.url || '/placeholder-project.svg'}
                               alt={m.name || `Media ${idx + 1}`}
-                              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                              className="block w-full h-full object-cover object-center transition-transform duration-200 group-hover:scale-105"
                             />
                             {m.type === 'video' && (
                               <div className="absolute inset-0 flex items-center justify-center bg-black/20">
@@ -967,13 +967,7 @@ export default function UploadProjectPage({
                   </div>
                 )}
 
-                {galleryMedia.length > 0 && projectData.media.length > 0 && projectData.media[activeIndex]?.type === 'image' && (
-                  <div className="p-3 flex items-center gap-3">
-                    <Button size="sm" variant="outline" onClick={() => setAsCover(projectData.media[activeIndex].id)}>
-                      Set as Cover
-                    </Button>
-                  </div>
-                )}
+                {/* Set as Cover button removed in preview gallery as requested */}
               </CardContent>
             </Card>
 
@@ -1361,8 +1355,8 @@ export default function UploadProjectPage({
                   <div ref={thumbRef} className="overflow-x-auto overflow-y-hidden whitespace-nowrap p-3">
                     <div className="inline-flex items-stretch gap-2">
                       {galleryMedia.map((m, idx) => (
-                        <button key={idx} type="button" onClick={() => setActiveIndex(idx)} className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`} aria-label={`Go to media ${idx + 1}`}>
-                          <img src={(m as any).thumb || m.url || '/placeholder-project.svg'} alt={m.name || `Media ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105" />
+                        <button key={idx} type="button" onClick={() => setActiveIndex(idx)} className={`group relative w-[160px] h-[90px] flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`} aria-label={`Go to media ${idx + 1}`}>
+                          <img src={(m as any).thumb || m.url || '/placeholder-project.svg'} alt={m.name || `Media ${idx + 1}`} className="block w-full h-full object-cover object-center transition-transform duration-200 group-hover:scale-105" />
                           {m.type === 'video' && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                               <Play className="text-white w-6 h-6 drop-shadow" />
@@ -1382,11 +1376,6 @@ export default function UploadProjectPage({
                 </div>
               )}
 
-              {galleryMedia.length > 0 && projectData.media.length > 0 && projectData.media[activeIndex]?.type === 'image' && (
-                <div className="p-3 flex items-center gap-3">
-                  <Button size="sm" variant="outline" onClick={() => setAsCover(projectData.media[activeIndex].id)}>Set as Cover</Button>
-                </div>
-              )}
             </CardContent>
           </Card>
 

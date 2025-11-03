@@ -152,7 +152,7 @@ async function createThumbnail(file: File, maxWidth: number): Promise<File> {
 
 export async function listAllInPrefix(prefix: string) {
   const bucket = 'project-files';
-  const results: Array<{ path: string; name: string; id?: string; updated_at?: string; created_at?: string; last_accessed_at?: string; metadata?: any; size?: number; type?: 'file' | 'folder'; }>> = [];
+  const results: Array<{ path: string; name: string; id?: string; updated_at?: string; created_at?: string; last_accessed_at?: string; metadata?: any; size?: number; type?: 'file' | 'folder'; }> = [];
   async function listDir(path: string) {
     const { data, error } = await supabase.storage.from(bucket).list(path, { limit: 1000 });
     if (error) return;

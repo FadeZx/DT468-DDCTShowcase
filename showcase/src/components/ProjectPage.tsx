@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
+import Slider from 'react-slick';
 
 interface ProjectPageProps {
   project: any;
@@ -35,8 +36,13 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     'https://picsum.photos/seed/5/1280/720',
   ];
   const [activeIndex, setActiveIndex] = useState(0);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [isHoveringMain, setIsHoveringMain] = useState(false);
   const thumbRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<any>(null);
   const attemptedFetchRef = useRef(false);
+  const sliderSettings = { infinite: false, slidesToShow: 3, slidesToScroll: 1, arrows: false, swipeToSlide: true } as const;
+
 
   useEffect(() => {
     const providedAll = Array.isArray(project.media?.all) ? project.media.all : null;
@@ -164,6 +170,15 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   );
   console.log('[ProjectPage] galleryMedia built:', { projectId: project.id, count: galleryMedia.length, galleryMedia, rawFilesCount: projectFiles.length, rawFiles: projectFiles });
 
+  // Autoplay main gallery every 4s; pauses on hover or if only 1 item
+  useEffect(() => {
+    if (!autoPlay || isHoveringMain || galleryMedia.length <= 1) return;
+    const id = setInterval(() => {
+      setActiveIndex((prev) => (galleryMedia.length ? (prev + 1) % galleryMedia.length : 0));
+    }, 4000);
+    return () => clearInterval(id);
+  }, [autoPlay, isHoveringMain, galleryMedia.length]);
+
   // Keep active index in range when gallery changes
   useEffect(() => {
     setActiveIndex((prev) => (galleryMedia.length ? Math.min(prev, galleryMedia.length - 1) : 0));
@@ -229,7 +244,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
           <Card>
             <CardContent className="p-0">
               {/* Main media viewer */}
-              <div className="relative w-full bg-black">
+              <div className="relative w-full bg-black" onMouseEnter={() => setIsHoveringMain(true)} onMouseLeave={() => setIsHoveringMain(false)}>
                 <AspectRatio ratio={16/9}>
                   <div className="relative w-full h-full bg-black">
                     {galleryMedia.length > 0 ? (
@@ -242,11 +257,11 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                           className="absolute inset-0 w-full h-full"
                         />
                       ) : (
-                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                        <div className="absolute inset-0 w-full h-full">
                           <SupabaseImage
                             src={galleryMedia[activeIndex].url}
                             alt={galleryMedia[activeIndex].name || project.title}
-                            className="max-w-full max-h-full object-contain"
+                            className="w-full h-full object-cover"
                             fallbackSrc="/placeholder-project.svg"
                           />
                         </div>
@@ -257,7 +272,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                       </div>
                     )}
 
-                    {/* Nav buttons */}
+                    {/* Nav buttons + autoplay toggle */}
                     {galleryMedia.length > 1 && (
                       <>
                         <button
@@ -289,45 +304,46 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
                   <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
 
-                  {/* scrollable row */}
-                  <div ref={thumbRef} className="overflow-x-auto overflow-y-hidden whitespace-nowrap p-3">
-                    <div className="inline-flex items-stretch gap-2">
-                      {galleryMedia.map((m, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setActiveIndex(idx)}
-                          className={`group relative h-24 w-40 flex-none rounded-md overflow-hidden border ${idx === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
-                          aria-label={`Go to media ${idx + 1}`}
-                        >
-                          <img
-                            src={(m as any).thumb || m.url || '/placeholder-project.svg'}
-                            alt={m.name || `Media ${idx + 1}`}
-                            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                          />
-                          {m.type === 'video' && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                              <Play className="text-white w-6 h-6 drop-shadow" />
-                            </div>
-                          )}
-                        </button>
+                  {/* react-slick thumbnails */}
+                  <div className="p-3">
+                    <Slider ref={(s: any) => (sliderRef.current = s)} {...sliderSettings}>
+                      {galleryMedia.map((m, realIndex) => (
+                        <div key={realIndex}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveIndex(realIndex)}
+                            className={`thumb-item group relative w-[160px] h-[90px] flex-none rounded-md overflow-hidden border ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
+                            aria-label={`Go to media ${realIndex + 1}`}
+                          >
+                            <img
+                              src={(m as any).thumb || m.url || '/placeholder-project.svg'}
+                              alt={m.name || `Media ${realIndex + 1}`}
+                              className="w-full h-full object-cover object-center transition-transform duration-200 group-hover:scale-105"
+                            />
+                            {m.type === 'video' && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <Play className="text-white w-6 h-6 drop-shadow" />
+                              </div>
+                            )}
+                          </button>
+                        </div>
                       ))}
-                    </div>
+                    </Slider>
                   </div>
 
-                  {/* left/right scroll buttons */}
+                  {/* left/right arrows trigger slider */}
                   <button
                     type="button"
-                    aria-label="Scroll thumbnails left"
-                    onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: -240, behavior: 'smooth' }); }}
+                    aria-label="Previous thumbnails"
+                    onClick={() => sliderRef.current?.slickPrev()}
                     className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <button
                     type="button"
-                    aria-label="Scroll thumbnails right"
-                    onClick={() => { if (thumbRef.current) thumbRef.current.scrollBy({ left: 240, behavior: 'smooth' }); }}
+                    aria-label="Next thumbnails"
+                    onClick={() => sliderRef.current?.slickNext()}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
                   >
                     <ChevronRight className="w-5 h-5" />

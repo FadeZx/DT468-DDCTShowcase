@@ -1,7 +1,45 @@
 /*! tailwindcss v4.1.3 | MIT License | https://tailwindcss.com */
+@import 'slick-carousel/slick/slick.css';
+@import 'slick-carousel/slick/slick-theme.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import 'slick-carousel/slick/slick.css';
+@import 'slick-carousel/slick/slick-theme.css';
+
+/* Force fixed-size equal thumbnails inside slick */
+.thumb-slider .slick-list {
+  margin: 0 -4px; /* compensate slide margins so track stays same width */
+}
+.thumb-slider .slick-track {
+  display: flex !important;
+  align-items: stretch !important;
+}
+.thumb-slider .slick-slide {
+  margin: 0 4px;
+  width: 160px !important;  /* override inline width from slick */
+  height: 90px !important;
+  float: none !important;      /* prevent float from interfering with flex track */
+  line-height: 0 !important;   /* remove baseline gap */
+}
+.thumb-slider .slick-slide > div {
+  height: 100% !important;
+}
+.thumb-slider .thumb-item {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: 16 / 9;
+  box-sizing: border-box;      /* include border/ring in fixed box */
+}
+.thumb-slider .thumb-item img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important; /* crop to fill */
+  object-position: center center;
+}
+
 @layer properties {
   @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {
     *, :before, :after, ::backdrop {
