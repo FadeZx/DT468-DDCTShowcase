@@ -22,7 +22,7 @@ try {
 } catch {}
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; // service_role key
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -96,6 +96,13 @@ async function run() {
     });
     await upsertProfile({ id: studentId, email: 'student1@ddct.edu.th', name: 'Student One', role: 'student', year: '2568', bio: '', skills: [] });
 
+    const student2Id = await ensureUser({
+      email: 'student2@ddct.edu.th',
+      password: 'Student#468',
+      metadata: { name: 'Student Two', role: 'student', year: '2568' }
+    });
+    await upsertProfile({ id: student2Id, email: 'student2@ddct.edu.th', name: 'Student Two', role: 'student', year: '2568', bio: '', skills: [] });
+
     const guestId = await ensureUser({
       email: 'guest@ddct.edu.th',
       password: 'Guest#468',
@@ -106,6 +113,7 @@ async function run() {
     console.log('Done. Accounts created:');
     console.log('- admin@ddct.edu.th / Admin#468');
     console.log('- student1@ddct.edu.th / Student#468');
+    console.log('- student2@ddct.edu.th / Student#468');
     console.log('- guest@ddct.edu.th / Guest#468');
   } catch (e) {
     console.error('Seed failed:', e);

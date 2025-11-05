@@ -25,6 +25,11 @@ interface ProjectCardProps {
     };
     tags: string[];
     featured?: boolean;
+    members?: Array<{
+      id: string;
+      name: string;
+      avatar?: string;
+    }>;
   };
   onClick: (projectId: string) => void;
   theme?: {
@@ -95,10 +100,29 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
           </div>
           
           <div className="mt-auto flex items-center">
-            <Avatar className="w-5 h-5">
-              <AvatarImage src="/placeholder-avatar.svg" />
-              <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
-            </Avatar>
+            {/* Stacked member avatars */}
+            {project.members && project.members.length > 0 ? (
+              <div className="flex items-center -space-x-2">
+                {project.members.slice(0, 3).map((member, index) => (
+                  <Avatar key={member.id} className="w-6 h-6 border-2 border-background">
+                    <AvatarImage src={member.avatar || '/placeholder-avatar.svg'} />
+                    <AvatarFallback className="text-[10px]">
+                      {member.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                ))}
+                {project.members.length > 3 && (
+                  <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
+                    <span className="text-[9px] font-medium">+{project.members.length - 3}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Avatar className="w-5 h-5">
+                <AvatarImage src={project.author.avatar || '/placeholder-avatar.svg'} />
+                <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
+              </Avatar>
+            )}
           </div>
         </CardContent>
         

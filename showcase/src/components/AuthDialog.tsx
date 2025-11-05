@@ -12,7 +12,7 @@ interface AuthDialogProps {
   onClose: () => void;
   onSignedIn: (profile: any) => void;
   signInWithEmail: (email: string, password: string) => Promise<any>;
-  quickLoginEmails: { admin: string; student: string };
+  quickLoginEmails: { admin: string; student1: string; student2: string };
 }
 
 export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quickLoginEmails }: AuthDialogProps) {
@@ -38,13 +38,15 @@ export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quick
     }
   };
 
-  const handleQuick = async (role: 'admin' | 'student') => {
+  const handleQuick = async (role: 'admin' | 'student1' | 'student2') => {
     setLoading(true);
     setError('');
     try {
       // Default seed passwords we will create with the seed script
       const pwd = role === 'admin' ? 'Admin#468' : 'Student#468';
-      const emailToUse = role === 'admin' ? quickLoginEmails.admin : quickLoginEmails.student;
+      const emailToUse = role === 'admin' ? quickLoginEmails.admin : 
+                         role === 'student1' ? quickLoginEmails.student1 : 
+                         quickLoginEmails.student2;
       const profile = await signInWithEmail(emailToUse, pwd);
       onSignedIn(profile);
       onClose();
@@ -78,12 +80,15 @@ export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quick
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button onClick={() => handleQuick('admin')} disabled={loading} className="flex items-center gap-2">
                 <Shield className="w-4 h-4" /> Admin
               </Button>
-              <Button onClick={() => handleQuick('student')} disabled={loading} className="flex items-center gap-2">
-                <GraduationCap className="w-4 h-4" /> Student
+              <Button onClick={() => handleQuick('student1')} disabled={loading} className="flex items-center gap-2">
+                <GraduationCap className="w-4 h-4" /> Student One
+              </Button>
+              <Button onClick={() => handleQuick('student2')} disabled={loading} className="flex items-center gap-2">
+                <GraduationCap className="w-4 h-4" /> Student Two
               </Button>
               <Button variant="outline" onClick={onClose} disabled={loading} className="flex items-center gap-2">
                 <User className="w-4 h-4" /> Continue as Guest

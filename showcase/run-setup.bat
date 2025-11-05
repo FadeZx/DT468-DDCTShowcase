@@ -1,0 +1,5 @@
+@echo off
+cd /d %~dp0
+set SUPABASE_URL=https://wkztatplbifxzlktwiqn.supabase.co
+set SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndrenRhdHBsYmlmeHpsa3R3aXFuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MDUxMTI0NCwiZXhwIjoyMDc2MDg3MjQ0fQ.FnLc6bqsbqQpP28ApTgi-JhoelCuYKymaA8KIwJS7Qk
+node src\setup-admin.js

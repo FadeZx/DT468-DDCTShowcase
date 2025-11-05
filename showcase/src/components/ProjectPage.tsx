@@ -251,12 +251,12 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
           {/* Steam-like hero media carousel with custom thumbnail strip */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardContent className="p-0">
               {/* Main media viewer */}
-              <div className="relative w-full bg-black" onMouseEnter={() => setIsHoveringMain(true)} onMouseLeave={() => setIsHoveringMain(false)}>
+              <div className="relative w-full bg-black rounded-lg overflow-hidden" onMouseEnter={() => setIsHoveringMain(true)} onMouseLeave={() => setIsHoveringMain(false)}>
                 <AspectRatio ratio={16/9}>
-                  <div className="relative w-full h-full bg-black">
+                  <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
                     {galleryMedia.length > 0 ? (
                       galleryMedia[activeIndex]?.type === 'video' ? (
                         <iframe
@@ -267,18 +267,18 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                           className="absolute inset-0 w-full h-full"
                         />
                       ) : (
-                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center p-4">
                           <SupabaseImage
                             src={galleryMedia[activeIndex].url}
                             alt={galleryMedia[activeIndex].name || project.title}
-                            className="max-w-full max-h-full object-contain"
+                            className="max-w-full max-h-full w-auto h-auto object-contain rounded-lg"
                             fallbackSrc="/placeholder-project.svg"
                           />
                         </div>
                       )
                     ) : (
-                      <div className="absolute inset-0 w-full h-full flex items-center justify-center">
-                        <img src={placeholderImages[0]} alt="Placeholder" className="max-w-full max-h-full object-contain" />
+                      <div className="absolute inset-0 w-full h-full flex items-center justify-center p-4">
+                        <img src={placeholderImages[0]} alt="Placeholder" className="max-w-full max-h-full w-auto h-auto object-contain rounded-lg" />
                       </div>
                     )}
 

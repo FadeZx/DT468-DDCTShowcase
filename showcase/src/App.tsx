@@ -208,7 +208,7 @@ export default function App() {
   };
 
   // Auth helpers
-  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student: 'student1@ddct.edu.th' };
+  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student1: 'student1@ddct.edu.th', student2: 'student2@ddct.edu.th' };
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
