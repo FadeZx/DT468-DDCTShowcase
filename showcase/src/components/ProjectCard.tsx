@@ -35,7 +35,7 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
   const coverRef = useRef<HTMLDivElement>(null);
-  const [infoHeightPx, setInfoHeightPx] = useState<number>(96);
+  const [infoHeightPx, setInfoHeightPx] = useState<number>(120);
 
   useEffect(() => {
     const element = coverRef.current;
@@ -44,9 +44,8 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       const height = entry?.contentRect?.height ?? 0;
-      // Ensure a sensible minimum height for very small cards
-      // Reserve reasonable minimum so footer fits
-      setInfoHeightPx(Math.max(96, Math.round(height / 3)));
+      // Reserve enough space for title, 2-line description, and avatar
+      setInfoHeightPx(Math.max(120, Math.round(height / 3)));
     });
 
     observer.observe(element);
@@ -85,17 +84,17 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
       </div>
       
       <div className="flex flex-col" style={{ height: infoHeightPx }}>
-        <CardContent className="px-3 pt-2 pb-3 flex-1 overflow-hidden">
-          <h3 className="font-semibold mb-0 line-clamp-1 group-hover:text-primary transition-colors text-sm">
+        <CardContent className="px-3 pt-1 pb-3 flex-1 overflow-hidden">
+          <h3 className="font-semibold mb-1 line-clamp-1 group-hover:text-primary transition-colors text-sm">
             {project.title}
           </h3>
-          <div className="overflow-hidden mb-1">
-            <p className="text-xs text-muted-foreground line-clamp-2">
+          <div className="overflow-hidden mb-1 min-h-[2.6em]">
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug max-h-[2.6em]">
               {project.description}
             </p>
           </div>
           
-          <div className="flex items-center">
+          <div className="mt-auto flex items-center">
             <Avatar className="w-5 h-5">
               <AvatarImage src="/placeholder-avatar.svg" />
               <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>

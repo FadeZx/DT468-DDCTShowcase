@@ -267,11 +267,11 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                           className="absolute inset-0 w-full h-full"
                         />
                       ) : (
-                        <div className="absolute inset-0 w-full h-full">
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center">
                           <SupabaseImage
                             src={galleryMedia[activeIndex].url}
                             alt={galleryMedia[activeIndex].name || project.title}
-                            className="w-full h-full object-cover"
+                            className="max-w-full max-h-full object-contain"
                             fallbackSrc="/placeholder-project.svg"
                           />
                         </div>
@@ -308,38 +308,44 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               </div>
 
               {/* Steam-like thumbnail strip */}
-              {galleryMedia.length > 0 && (
-                <div className="relative w-full bg-muted/30">
-                  {/* fade edges */}
-                  <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
-                  <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
+{false && (
+  <div className="relative w-full bg-muted/30">
+    <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
+    <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
 
-                  {/* react-slick thumbnails */}
-                  <div className="p-3">
-                    <Slider ref={(s: any) => (sliderRef.current = s)} {...sliderSettings}>
-                      {galleryMedia.map((m, realIndex) => (
-                        <div key={realIndex}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveIndex(realIndex)}
-                            className={`thumb-item group relative w-[160px] h-[90px] flex-none rounded-md overflow-hidden border ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary' : 'border-transparent hover:border-primary/40'}`}
-                            aria-label={`Go to media ${realIndex + 1}`}
-                          >
-                            <img
-                              src={(m as any).thumb || m.url || '/placeholder-project.svg'}
-                              alt={m.name || `Media ${realIndex + 1}`}
-                              className="w-full h-full object-cover object-center transition-transform duration-200 group-hover:scale-105"
-                            />
-                            {m.type === 'video' && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                                <Play className="text-white w-6 h-6 drop-shadow" />
-                              </div>
-                            )}
-                          </button>
-                        </div>
-                      ))}
-                    </Slider>
-                  </div>
+    <div className="p-3">
+      <Slider ref={(s: any) => (sliderRef.current = s)} {...sliderSettings}>
+       {/* inside Slider */}
+{galleryMedia.map((m, realIndex) => (
+  // slick wraps children — ensure this wrapper centers the button
+  <div key={realIndex} className="slick-thumb-wrap flex items-center justify-center">
+    <button
+      type="button"
+      onClick={() => setActiveIndex(realIndex)}
+      aria-label={`Go to media ${realIndex + 1}`}
+      // button must be block so it fully occupies the box
+      className={`thumb-item block w-[240px] h-[135px] flex-none rounded-md overflow-hidden border transition-transform duration-200
+        ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary scale-105' : 'border-transparent hover:border-primary/40 hover:scale-105'}`}
+    >
+      <img
+        src={(m as any).thumb || m.url || '/placeholder-project.svg'}
+        alt={m.name || `Media ${realIndex + 1}`}
+        // ensure image fills and is centered
+        className="thumb-img w-full h-full object-cover object-center block"
+        loading="lazy"
+        decoding="async"
+      />
+      {m.type === 'video' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <Play className="text-white w-6 h-6 drop-shadow" />
+        </div>
+      )}
+    </button>
+  </div>
+))}
+
+      </Slider>
+    </div>
 
                   {/* left/right arrows trigger slider */}
                   <button

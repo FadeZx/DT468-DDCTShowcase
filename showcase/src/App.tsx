@@ -259,9 +259,62 @@ export default function App() {
     navigate(`/users/${userId}`);
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    // TODO: Implement project deletion logic
-    console.log('Delete project:', projectId);
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      if (!currentUser) {
+        alert('Please sign in to delete a project.');
+        return;
+      }
+
+      // Check ownership/permission
+      const { data: proj, error: projErr } = await supabase
+        .from('projects')
+        .select('id, owner_id')
+        .eq('id', projectId)
+        .single();
+      if (projErr) throw projErr;
+      const isOwner = currentUser?.id && proj?.owner_id && currentUser.id === proj.owner_id;
+      const isAdmin = currentUser?.role === 'admin';
+      if (!isOwner && !isAdmin) {
+        alert('You do not have permission to delete this project.');
+        return;
+      }
+
+      // Load related files before deletion for storage cleanup
+      const { data: files } = await supabase
+        .from('project_files')
+        .select('file_path')
+        .eq('project_id', projectId);
+
+      // Delete project files rows
+      await supabase
+        .from('project_files')
+        .delete()
+        .eq('project_id', projectId);
+
+      // Delete storage objects under the 'projects' bucket when path prefixed with 'projects/'
+      const storagePaths = (files || [])
+        .map((f: any) => f.file_path)
+        .filter((p: string) => typeof p === 'string' && p.startsWith('projects/'))
+        .map((p: string) => p.replace(/^projects\//, ''));
+      if (storagePaths.length) {
+        await supabase.storage.from('projects').remove(storagePaths);
+      }
+
+      // Delete project row
+      const { error: delErr } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId);
+      if (delErr) throw delErr;
+
+      // Update local state and navigate home
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+      alert('Failed to delete project. Please try again.');
+    }
   };
 
   const handleEventClick = (eventId: string) => {
