@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { formatDistanceToNow } from 'date-fns';
+import { Link } from 'react-router-dom';
 
 interface Comment {
   id: string;
@@ -52,16 +53,49 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
   const [editContent, setEditContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [canModerate, setCanModerate] = useState(false);
+  const [replyFor, setReplyFor] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
 
   useEffect(() => {
     loadComments();
   }, [projectId]);
 
+  // Compute whether current user can moderate (owner or collaborator or admin)
+  useEffect(() => {
+    let mounted = true;
+    async function computeModeration() {
+      try {
+        if (!currentUser?.id) { if (mounted) setCanModerate(false); return; }
+        if (currentUser.role === 'admin') { if (mounted) setCanModerate(true); return; }
+        const { data: proj } = await supabase
+          .from('projects')
+          .select('owner_id')
+          .eq('id', projectId)
+          .single();
+        if (!mounted) return;
+        if (proj?.owner_id === currentUser.id) { setCanModerate(true); return; }
+        const { data: collab } = await supabase
+          .from('project_collaborators')
+          .select('user_id')
+          .eq('project_id', projectId)
+          .eq('user_id', currentUser.id)
+          .limit(1);
+        if (!mounted) return;
+        setCanModerate(!!(collab && collab.length));
+      } catch {
+        if (mounted) setCanModerate(false);
+      }
+    }
+    computeModeration();
+    return () => { mounted = false; };
+  }, [projectId, currentUser?.id, currentUser?.role, supabase]);
+
   const loadComments = async () => {
     try {
       setLoading(true);
       
-      // Fetch only root comments (no replies)
+      // Fetch all comments (roots + replies)
       const { data: commentsData, error } = await supabase
         .from('project_comments')
         .select(`
@@ -69,8 +103,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
           user:profiles(id, name, avatar, role)
         `)
         .eq('project_id', projectId)
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -94,14 +127,22 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
         return acc;
       }, {} as Record<string, number>) || {};
 
-      // Create simple comment objects (no threading)
-      const processedComments: Comment[] = commentsData?.map((comment) => ({
-        ...comment,
-        likes_count: likeCounts[comment.id] || 0,
-        is_liked: userLikes.includes(comment.id)
-      })) || [];
-
-      setComments(processedComments);
+      // Build simple thread: roots with replies
+      const all: Comment[] = (commentsData || []).map((c: any) => ({
+        ...c,
+        likes_count: likeCounts[c.id] || 0,
+        is_liked: userLikes.includes(c.id)
+      }));
+      const byParent = new Map<string | null, Comment[]>();
+      all.forEach((c) => {
+        const key = (c.parent_id as string | null) ?? null;
+        const arr = byParent.get(key) || [];
+        arr.push(c);
+        byParent.set(key, arr);
+      });
+      const roots = (byParent.get(null) || []).sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      roots.forEach(r => { r.replies = (byParent.get(r.id) || []).sort((a,b)=> new Date(a.created_at).getTime() - new Date(b.created_at).getTime()); });
+      setComments(roots);
     } catch (error) {
       console.error('Error loading comments:', error);
     } finally {
@@ -261,7 +302,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
 
   const CommentItem = ({ comment }: { comment: Comment }) => {
     const canEdit = currentUser?.id === comment.user_id;
-    const canDelete = currentUser?.id === comment.user_id || currentUser?.role === 'admin';
+    const canDelete = currentUser?.id === comment.user_id || currentUser?.role === 'admin' || canModerate;
 
     return (
       <div>
@@ -277,7 +318,9 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">{comment.user.name}</span>
+                  <Link to={comment.user.id ? `/users/${comment.user.id}` : '#'} className="font-medium text-sm hover:text-primary cursor-pointer">
+                    {comment.user.name}
+                  </Link>
                   <Badge 
                     variant="secondary" 
                     className={`text-xs px-2 py-0 ${getRoleBadgeColor(comment.user.role)}`}
@@ -337,6 +380,8 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
                   onChange={(e) => setEditContent(e.target.value)}
                   placeholder="Edit your comment..."
                   className="min-h-[80px]"
+                  dir="auto"
+                  style={{ unicodeBidi: 'plaintext' as any }}
                   autoFocus
                 />
                 <div className="flex gap-2">
@@ -361,9 +406,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
               </div>
             ) : (
               <div className="mb-3">
-                <p className="text-sm leading-relaxed break-words comment-content">
-                  {comment.content}
-                </p>
+                <p className="text-sm leading-relaxed break-words comment-content select-text">{comment.content}</p>
               </div>
             )}
 
@@ -386,8 +429,90 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
                   }`} />
                   {comment.likes_count || 0}
                 </Button>
+                <Button variant="ghost" size="sm" className="h-auto p-0 text-muted-foreground hover:text-foreground" onClick={() => { setReplyFor(comment.id); setReplyText(''); }}>Reply</Button>
 
 
+              </div>
+            )}
+
+            {/* Reply box */}
+            {replyFor === comment.id && (
+              <div className="mt-3 space-y-2">
+                <Textarea
+                  key={`reply-${comment.id}`}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                                    placeholder="Write a reply…"
+                  rows={2}
+                  dir="ltr"
+                  autoFocus
+                />
+                <div className="flex items-center gap-2">
+                  <Button size="sm" disabled={submitting || !replyText.trim()} onClick={async () => {
+                    try {
+                      setSubmitting(true);
+                      const { error } = await supabase
+                        .from('project_comments')
+                        .insert({ project_id: projectId, user_id: currentUser.id, parent_id: comment.id, content: replyText.trim() });
+                      if (error) throw error;
+                      setReplyText(''); setReplyFor(null); await loadComments();
+                    } catch (e) { console.error(e); alert('Failed to post reply'); }
+                    finally { setSubmitting(false); }
+                  }}>Post Reply</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setReplyFor(null); setReplyText(''); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {/* Replies */}
+            {comment.replies && comment.replies.length > 0 && (
+              <div className="mt-4 space-y-3 pl-8 border-l border-border/50">
+                {comment.replies.map((rep) => (
+                  <div key={rep.id}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-7 h-7">
+                          <AvatarImage src={rep.user.avatar} />
+                          <AvatarFallback>{rep.user.name?.charAt(0)?.toUpperCase() || 'U'}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex items-center gap-2">
+                          <Link to={rep.user.id ? `/users/${rep.user.id}` : '#'} className="font-medium text-sm hover:text-primary cursor-pointer">{rep.user.name}</Link>
+                          <span className="text-xs text-muted-foreground">{formatTimeAgo(rep.created_at)}</span>
+                        </div>
+                      </div>
+                      {(currentUser?.id === rep.user_id || canModerate || currentUser?.role==='admin') && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {(currentUser?.id === rep.user_id) && (
+                              <DropdownMenuItem onClick={() => { setEditingComment(rep.id); setEditContent(rep.content); }}>
+                                <Edit className="h-4 w-4 mr-2" /> Edit
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => deleteComment(rep.id)} className="text-red-600">
+                              <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                    {editingComment === rep.id ? (
+                      <div className="space-y-2">
+                        <Textarea value={editContent} onChange={(e)=>setEditContent(e.target.value)} rows={2} dir="ltr" />
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => editComment(rep.id)}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingComment(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap select-text">{rep.content}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -443,6 +568,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Share your thoughts about this project..."
                   className="min-h-[100px] resize-none"
+                  dir="ltr"
                 />
                 <div className="flex justify-between items-center">
                   <p className="text-xs text-muted-foreground">

@@ -8,7 +8,6 @@ import { UserProfile } from './components/UserProfile';
 import { AdminDashboard } from './components/AdminDashboard';
 import UploadProjectPage from './components/UploadProject/UploadProjectPage';
 import MyProjectsPage from './components/MyProjects/MyProjectsPage';
-
 import { AccountSettings } from './components/Profile/AccountSettings';
 import { Toaster } from './components/ui/sonner';
 import { EventsPage } from './components/EventsPage';
@@ -17,18 +16,22 @@ import { EventManagement } from './components/EventManagement';
 import supabase from './utils/supabase/client';
 import { getProjectLikeCounts } from './utils/projectLikes';
 
-// Wrapper component for ProjectPage to handle dynamic project lookup
-function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject, onProjectUpdate }: {
+
+// Wrapper component for ProjectPage to handle dynamic project lookup and page-loading ready callback
+function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProject, onProjectUpdate, onReady }: {
   projects: any[];
   currentUser: any;
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onProjectUpdate: () => void;
+  onReady?: () => void;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const project = projects.find(p => p.id === projectId);
-  
+
+  useEffect(() => { onReady?.(); }, []);
+
   if (!project) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -36,7 +39,7 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
       </div>
     );
   }
-  
+
   return (
     <ProjectPage
       project={project}
@@ -49,7 +52,6 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
     />
   );
 }
-
 function ProjectEditorWrapper({ currentUser, onProjectUpdated, allProjects }: {
   currentUser: any;
   onProjectUpdated: () => void;
@@ -78,21 +80,64 @@ function UserProfileWrapper({ projects, currentUser, onProjectClick, onNavigate 
 }) {
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
-  const user = users.find((u: any) => u.id === userId);
-  
-  if (!user) {
+  const [loadedUser, setLoadedUser] = useState<any | null>(null);
+  const [loadingUser, setLoadingUser] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!userId) { setLoadedUser(null); setLoadingUser(false); return; }
+      // 1) Try global cache
+      const cached = users.find((u: any) => u.id === userId);
+      if (cached) { if (active) { setLoadedUser(cached); setLoadingUser(false); } return; }
+      // 2) Try derive from projects (author or members)
+      const fromProjects = (() => {
+        for (const p of projects) {
+          if (p?.author?.id === userId) return p.author;
+          const m = (p?.members || []).find((x: any) => x.id === userId);
+          if (m) return m;
+        }
+        return null;
+      })();
+      if (fromProjects) { if (active) { setLoadedUser(fromProjects); setLoadingUser(false); } }
+      // 3) Fetch from Supabase
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, name, email, avatar, role, year')
+          .eq('id', userId)
+          .single();
+        if (error) throw error;
+        if (active) { setLoadedUser(data); setLoadingUser(false); }
+      } catch {
+        if (active) setLoadingUser(false);
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, [userId, projects]);
+
+  if (loadingUser) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <p className="text-center">Loading profile…</p>
+      </div>
+    );
+  }
+
+  if (!loadedUser) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
         <p className="text-center">User not found</p>
       </div>
     );
   }
-  
+
   return (
     <UserProfile
-      user={user}
+      user={loadedUser}
       projects={projects}
-      isOwnProfile={user.id === currentUser?.id}
+      isOwnProfile={loadedUser.id === currentUser?.id}
       currentUser={currentUser}
       onProjectClick={onProjectClick}
       onNavigate={onNavigate}
@@ -161,7 +206,7 @@ export default function App() {
         if (projectIds.length) {
           const { data: collabRows } = await supabase
             .from('project_collaborators')
-            .select('project_id, user_id')
+            .select('project_id, user_id, job_role')
             .in('project_id', projectIds);
           const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
           let memberProfiles: any[] = [];
@@ -180,7 +225,8 @@ export default function App() {
               id: prof.id,
               name: prof.name || 'Unknown',
               avatar: prof.avatar || null,
-              year: prof.year || 'Unknown'
+              year: prof.year || 'Unknown',
+              jobRole: (r as any).job_role || null
             });
           });
         }
@@ -280,9 +326,7 @@ export default function App() {
     navigate(path);
   };
 
-  const handleProjectClick = (projectId: string) => {
-    navigate(`/projects/${projectId}`);
-  };
+  const handleProjectClick = (projectId: string) => { navigate(`/projects/${projectId}`); };
 
   const handleProfileClick = (userId: string) => {
     navigate(`/users/${userId}`);
@@ -402,7 +446,7 @@ export default function App() {
       if (projectIds.length) {
         const { data: collabRows } = await supabase
           .from('project_collaborators')
-          .select('project_id, user_id')
+          .select('project_id, user_id, job_role')
           .in('project_id', projectIds);
         const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
         let memberProfiles: any[] = [];
@@ -421,7 +465,8 @@ export default function App() {
             id: prof.id,
             name: prof.name || 'Unknown',
             avatar: prof.avatar || null,
-            year: prof.year || 'Unknown'
+            year: prof.year || 'Unknown',
+            jobRole: (r as any).job_role || null
           });
         });
       }
@@ -492,7 +537,7 @@ export default function App() {
               signInWithEmail={signInWithEmail}
               quickLoginEmails={quickLoginEmails}
             />
-            <Routes>
+          <Routes>
               <Route path="/" element={
                 <HomePage
                   projects={projects}
@@ -509,11 +554,10 @@ export default function App() {
                   }}
                   onDeleteProject={handleDeleteProject}
                   onProjectUpdate={loadData}
-                />
+                  />
               } />
-
               <Route path="/projects/:projectId/edit" element={
-                currentUser?.role === 'student' || currentUser?.role === 'admin' ? (
+                (currentUser?.role === 'student' || currentUser?.role === 'admin') ? (
                   <ProjectEditorWrapper
                     currentUser={currentUser}
                     onProjectUpdated={loadData}
@@ -680,3 +724,15 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+

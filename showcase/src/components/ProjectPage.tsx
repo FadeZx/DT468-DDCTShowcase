@@ -7,8 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import {
   ArrowLeft, Download, Heart, Share2, Eye, Calendar,
-  Github, ExternalLink, Play, Users, Edit, Trash2, ChevronLeft, ChevronRight
+  Github, ExternalLink, Play, Users, Edit, Trash2, ChevronLeft, ChevronRight, Crown
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
@@ -208,7 +209,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">{project.title}</h1>
+            <h1 className="text-3xl font-bold select-text">{project.title}</h1>
             <Badge className="bg-primary text-primary-foreground">
               {project.category}
             </Badge>
@@ -216,7 +217,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               <Badge variant="outline">Published</Badge>
             )}
           </div>
-          <p className="text-muted-foreground">{project.description}</p>
+          <p className="text-muted-foreground select-text">{project.description}</p>
         </div>
         
         <div className="flex items-center gap-2">
@@ -289,7 +290,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                           type="button"
                           aria-label="Previous"
                           onClick={() => setActiveIndex((prev) => (prev - 1 + galleryMedia.length) % galleryMedia.length)}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60 cursor-pointer"
                         >
                           <ChevronLeft className="w-5 h-5" />
                         </button>
@@ -297,7 +298,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                           type="button"
                           aria-label="Next"
                           onClick={() => setActiveIndex((prev) => (prev + 1) % galleryMedia.length)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md bg-black/40 text-white hover:bg-black/60 cursor-pointer"
                         >
                           <ChevronRight className="w-5 h-5" />
                         </button>
@@ -324,7 +325,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
       onClick={() => setActiveIndex(realIndex)}
       aria-label={`Go to media ${realIndex + 1}`}
       // button must be block so it fully occupies the box
-      className={`thumb-item block w-[240px] h-[135px] flex-none rounded-md overflow-hidden border transition-transform duration-200
+      className={`thumb-item block w-[240px] h-[135px] flex-none rounded-md overflow-hidden border transition-transform duration-200 cursor-pointer
         ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary scale-105' : 'border-transparent hover:border-primary/40 hover:scale-105'}`}
     >
       <img
@@ -650,64 +651,72 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             </CardContent>
           </Card>
 
-          {/* Author Info */}
+          {/* Members */}
           <Card>
             <CardHeader>
-              <CardTitle>Created By</CardTitle>
+              <CardTitle>Members</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3 mb-4">
-                <Avatar>
-                  <AvatarImage src="/placeholder-avatar.svg" />
-                  <AvatarFallback>{project.author?.name?.[0] || 'U'}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold">{project.author?.name || 'Unknown Author'}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {project.author?.year ? `${project.author.year} Student` : 'Student'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Button variant="outline" size="sm" className="w-full">
-                  View Profile
-                </Button>
-                
-                {project.github_url && (
-                  <Button variant="outline" size="sm" className="w-full" asChild>
-                    <a href={project.github_url} target="_blank" rel="noopener noreferrer">
-                      <Github className="mr-2 h-4 w-4" />
-                      View Source
-                    </a>
-                  </Button>
-                )}
-                
-                {project.demo_url && (
-                  <Button variant="outline" size="sm" className="w-full" asChild>
-                    <a href={project.demo_url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Live Demo
-                    </a>
-                  </Button>
-                )}
-              </div>
+            <CardContent className="space-y-2">
+              {(() => {
+                const ownerId = project.author?.id;
+                const ownerJobRole = (project.members || []).find((m: any) => m.id === ownerId)?.jobRole || null;
+                const combined = [
+                  {
+                    id: ownerId,
+                    name: project.author?.name || 'Unknown Author',
+                    avatar: project.author?.avatar || null,
+                    jobRole: ownerJobRole,
+                    isOwner: true,
+                  },
+                  ...((project.members || []) as any[])
+                    .filter((m: any) => m.id !== ownerId)
+                    .map((m: any) => ({ ...m, isOwner: false })),
+                ];
+                return combined.map((m: any) => (
+                  <div key={m.id || Math.random()} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarImage src={m.avatar || undefined} />
+                        <AvatarImage src="/placeholder-avatar.svg" />
+                        <AvatarFallback>{m.name?.[0] || 'U'}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <Link to={m.id ? `/users/${m.id}` : '#'} className="font-semibold hover:text-primary cursor-pointer inline-flex items-center gap-1">
+                          {m.name}
+                          {m.isOwner && <Crown className="w-3 h-3 text-amber-500" />}
+                        </Link>
+                        { (m.jobRole) && (
+                          <p className="text-xs text-muted-foreground">{m.jobRole}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ));
+              })()}
             </CardContent>
           </Card>
 
           {/* Tags */}
-          {project.tags && typeof project.tags === 'string' && project.tags.trim() && (
+          {(() => {
+            const t = project.tags;
+            const arr = Array.isArray(t)
+              ? t
+              : (typeof t === 'string' ? t.split(',').map((s:string)=>s.trim()).filter(Boolean) : []);
+            return arr.length > 0;
+          })() && (
             <Card>
               <CardHeader>
                 <CardTitle>Tags</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {project.tags.split(',').map((tag: string, index: number) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {tag.trim()}
-                    </Badge>
-                  ))}
+                  {(
+                    Array.isArray(project.tags)
+                      ? project.tags
+                      : (typeof project.tags === 'string' ? project.tags.split(',').map((s:string)=>s.trim()).filter(Boolean) : [])
+                    ).map((tag: string, index: number) => (
+                      <Badge key={index} variant="outline" className="text-xs">{tag}</Badge>
+                    ))}
                 </div>
               </CardContent>
             </Card>

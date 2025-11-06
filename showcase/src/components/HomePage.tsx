@@ -16,6 +16,7 @@ interface HomePageProps {
 
 export function HomePage({ projects, onProjectClick }: HomePageProps) {
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const featuredProjects = projects.filter(p => p.featured).slice(0, 3);
   const recentProjects = projects.slice(0, 8);
@@ -39,9 +40,28 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
   const categories = Array.from(categoryMap.values());
 
-  const filteredProjects = selectedCategory === 'all'
+  const normalizeTags = (p: any): string[] => {
+    const t = p?.tags;
+    if (Array.isArray(t)) return t.map((s: any) => String(s || '').trim().toLowerCase()).filter(Boolean);
+    if (typeof t === 'string') return t.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    return [];
+  };
+
+  // gather all tag suggestions from visible projects
+  const allTagsSet = new Set<string>();
+  projects.forEach((p) => normalizeTags(p).forEach((t) => allTagsSet.add(t)));
+  const allTags = Array.from(allTagsSet).sort();
+
+  const filteredByCategory = selectedCategory === 'all'
     ? projects
     : projects.filter(p => formatCategoryId(p.category) === selectedCategory);
+
+  const filteredProjects = selectedTags.length === 0
+    ? filteredByCategory
+    : filteredByCategory.filter(p => {
+        const tags = normalizeTags(p);
+        return selectedTags.every(t => tags.includes(t));
+      });
 
   const upcomingEvents = [
     {
@@ -152,6 +172,27 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
                 </TabsTrigger>
               ))}
             </TabsList>
+
+            {/* Tag filters */}
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center mb-6">
+                {allTags.map((t) => {
+                  const active = selectedTags.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`text-xs px-2 py-1 rounded border cursor-pointer ${active ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent hover:text-accent-foreground'}`}
+                      onClick={() => {
+                        setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+                      }}
+                    >
+                      #{t}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <TabsContent value={selectedCategory}>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-1">

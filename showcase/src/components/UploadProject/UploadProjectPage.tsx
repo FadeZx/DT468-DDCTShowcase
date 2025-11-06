@@ -4,7 +4,8 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
-import { Plus, X, Users } from 'lucide-react';
+import { Plus, X, Users, Crown, Hash } from 'lucide-react';
+import { TagPicker } from '../TagPicker';
 
 interface UploadProjectPageProps {
   currentUser?: any;
@@ -31,10 +32,15 @@ export default function UploadProjectPage({
   const [newMember, setNewMember] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [owner, setOwner] = useState<any | null>(null);
+  const [ownerJobRole, setOwnerJobRole] = useState<string>("");
 
+  const [tags, setTags] = useState<string[]>([]);
+  const [allTagSuggestions, setAllTagSuggestions] = useState<string[]>([]);
   useEffect(() => {
     if (editProjectId) {
       loadMembers();
+      loadOwner(); loadProjectTags(); loadAllTags();
     }
   }, [editProjectId]);
 
@@ -43,7 +49,7 @@ export default function UploadProjectPage({
     try {
       const { data: memberLinks } = await supabase
         .from('project_collaborators')
-        .select('user_id, role')
+        .select('user_id, job_role')
         .eq('project_id', editProjectId);
 
       if (memberLinks?.length) {
@@ -59,7 +65,7 @@ export default function UploadProjectPage({
             id: profile.id,
             name: profile.name || profile.email || 'Member',
             email: profile.email || '',
-            role: link?.role || 'editor',
+            role: (link as any)?.job_role || 'contributor',
             avatar: profile.avatar || null,
           };
         });
@@ -70,6 +76,58 @@ export default function UploadProjectPage({
       console.error('Error loading members:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+
+  const loadProjectTags = async () => {
+    try {
+      const { data: proj } = await supabase.from("projects").select("tags").eq("id", editProjectId).single();
+      const t:any = proj?.tags;
+      if (Array.isArray(t)) setTags(t.filter(Boolean));
+      else if (typeof t === "string") setTags(t.split(",").map((s:string)=>s.trim()).filter(Boolean));
+    } catch (e) {}
+  };
+  const loadAllTags = async () => {
+    try {
+      const { data: rows } = await supabase.from("projects").select("tags");
+      const set = new Set<string>();
+      (rows||[]).forEach((r:any)=>{
+        const t:any = r?.tags;
+        if (Array.isArray(t)) t.forEach((x:string)=> set.add((x||"").trim()));
+        else if (typeof t === "string") t.split(",").forEach((x:string)=> set.add((x||"").trim()));
+      });
+      setAllTagSuggestions(Array.from(set).filter(Boolean).sort());
+    } catch (e) {}
+  };
+
+  const loadOwner = async () => {
+    try {
+      const { data: proj } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', editProjectId)
+        .single();
+      const ownerId = proj?.owner_id;
+      if (!ownerId) return;
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('id, name, email, avatar')
+        .eq('id', ownerId)
+        .single();
+      if (prof) {
+        setOwner(prof);
+        // fetch owner's job_role if present
+        const { data: ownerCollab } = await supabase
+          .from('project_collaborators')
+          .select('job_role')
+          .eq('project_id', editProjectId)
+          .eq('user_id', ownerId)
+          .maybeSingle();
+        setOwnerJobRole(ownerCollab?.job_role || "");
+      }
+    } catch (e) {
+      console.warn('Failed to load owner', e);
     }
   };
 
@@ -129,31 +187,56 @@ export default function UploadProjectPage({
     setIsUploading(true);
 
     try {
-      // Delete existing collaborators for this project
+      // Upsert owner job role row (cannot be removed by policies)
+      if (owner?.id) {
+        const { error: upsertOwnerErr } = await supabase
+          .from('project_collaborators')
+          .upsert({
+            project_id: editProjectId,
+            user_id: owner.id,
+            job_role: ownerJobRole || null,
+            role: 'owner',
+            invited_by: currentUser?.id,
+          }, { onConflict: 'project_id,user_id' });
+        if (upsertOwnerErr) throw upsertOwnerErr;
+      }
+
+      // Delete existing non-owner collaborators
       await supabase
         .from('project_collaborators')
         .delete()
-        .eq('project_id', editProjectId);
+        .eq('project_id', editProjectId)
+        .neq('user_id', owner?.id || '00000000-0000-0000-0000-000000000000');
 
-      // Insert new collaborators
+      // Insert collaborators (non-owners)
       if (members.length > 0) {
-        const memberRows = members.map(member => ({
-          project_id: editProjectId,
-          user_id: member.id,
-          role: member.role || 'editor',
-          invited_by: currentUser.id
-        }));
+        const memberRows = members
+          .filter(m => m.id !== owner?.id)
+          .map(member => ({
+            project_id: editProjectId,
+            user_id: member.id,
+            job_role: member.role || null,
+            role: 'member',
+            invited_by: currentUser?.id
+          }));
 
-        const { error: memberErr } = await supabase
-          .from('project_collaborators')
-          .insert(memberRows);
-
-        if (memberErr) throw memberErr;
+        if (memberRows.length) {
+          const { error: memberErr } = await supabase
+            .from('project_collaborators')
+            .insert(memberRows);
+          if (memberErr) throw memberErr;
+        }
       }
 
-      alert('Project members updated successfully!');
-      onProjectUpdated?.();
-      window.location.href = '/';
+      // Save tags to project
+      await supabase.from('projects').update({ tags }).eq('id', editProjectId);
+
+      alert('Edit Saved');
+      if (editProjectId) {
+        window.location.href = `/projects/${editProjectId}`;
+      } else {
+        window.location.href = '/';
+      }
     } catch (e: any) {
       console.error(e);
       alert(e.message || 'Failed to update project members');
@@ -195,6 +278,16 @@ export default function UploadProjectPage({
           <CardContent className="pt-6">
             <div className="space-y-6">
               <Card>
+              <Card>
+                <CardContent className="space-y-4 pt-6">
+                  <div className="flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="font-semibold">Project Tags</h3>
+                  </div>
+                  <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
+                  <p className="text-xs text-muted-foreground">Max 10 tags. Use common words users might search for.</p>
+                </CardContent>
+              </Card>
                 <CardContent className="space-y-6 pt-6">
                   <div>
                     <label className="block text-sm font-medium mb-2">Add Member by Email</label>
@@ -218,9 +311,48 @@ export default function UploadProjectPage({
 
                   {members.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold mb-3">Project Members ({members.length})</h3>
+                      <h3 className="text-sm font-semibold mb-3">Project Members ({members.length + (owner ? 1 : 0)})</h3>
                       <div className="space-y-2">
-                        {members.map(member => (
+                        {owner && (
+                          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-10 h-10">
+                                <AvatarImage src={owner.avatar || undefined} />
+                                <AvatarImage src="/placeholder-avatar.svg" />
+                                <AvatarFallback>
+                                  {owner.name?.charAt(0)?.toUpperCase() || 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm flex items-center gap-2">
+                                  {owner.name || owner.email}
+                                  <span className="inline-flex items-center text-xs text-amber-500">
+                                    <Crown className="w-3 h-3 mr-1" /> Owner
+                                  </span>
+                                </p>
+                                <div className="mt-1">
+                                  <label className="text-xs text-muted-foreground mr-2">Job role</label>
+                                  <select
+                                    className="text-xs border rounded px-2 py-1 bg-background"
+                                    value={ownerJobRole}
+                                    onChange={(e) => setOwnerJobRole(e.target.value)}
+                                  >
+                                    <option value="">(none)</option>
+                                    <option value="contributor">Contributor</option>
+                                    <option value="programmer">Programmer</option>
+                                    <option value="artist">Artist</option>
+                                    <option value="designer">Designer</option>
+                                    <option value="modeler">Modeler</option>
+                                    <option value="animator">Animator</option>
+                                    <option value="sound">Sound</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                            {/* owner cannot be removed — no action shown */}
+                          </div>
+                        )}
+                        {members.filter(member => member.id !== (owner?.id || '')).map(member => (
                           <div key={member.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
                             <div className="flex items-center gap-3">
                               <Avatar className="w-10 h-10">
@@ -233,6 +365,25 @@ export default function UploadProjectPage({
                               <div>
                                 <p className="font-medium text-sm">{member.name}</p>
                                 <p className="text-xs text-muted-foreground">{member.email}</p>
+                                <div className="mt-1">
+                                  <label className="text-xs text-muted-foreground mr-2">Job role</label>
+                                  <select
+                                    className="text-xs border rounded px-2 py-1 bg-background"
+                                    value={member.role}
+                                    onChange={(e) => {
+                                      const role = e.target.value;
+                                      setMembers(prev => prev.map(m => m.id === member.id ? { ...m, role } : m));
+                                    }}
+                                  >
+                                    <option value="contributor">Contributor</option>
+                                    <option value="programmer">Programmer</option>
+                                    <option value="artist">Artist</option>
+                                    <option value="designer">Designer</option>
+                                    <option value="modeler">Modeler</option>
+                                    <option value="animator">Animator</option>
+                                    <option value="sound">Sound</option>
+                                  </select>
+                                </div>
                               </div>
                             </div>
                             <Button
@@ -277,9 +428,7 @@ export default function UploadProjectPage({
               </>
             ) : (
               <>
-                <Users className="w-4 h-4" />
-                Save Members
-              </>
+                <Users className="w-4 h-4" />Save</>
             )}
           </Button>
         </div>
@@ -287,3 +436,7 @@ export default function UploadProjectPage({
     </div>
   );
 }
+
+
+
+
