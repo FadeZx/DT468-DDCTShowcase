@@ -156,6 +156,35 @@ export default function App() {
         // Fetch like counts for all projects (reuse projectIds from above)
         const likeCounts = await getProjectLikeCounts(supabase, projectIds);
 
+        // Fetch collaborators and their profiles
+        let membersByProject: Record<string, any[]> = {};
+        if (projectIds.length) {
+          const { data: collabRows } = await supabase
+            .from('project_collaborators')
+            .select('project_id, user_id')
+            .in('project_id', projectIds);
+          const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
+          let memberProfiles: any[] = [];
+          if (memberIds.length) {
+            const { data: profs } = await supabase
+              .from('profiles')
+              .select('id, name, avatar, year')
+              .in('id', memberIds);
+            memberProfiles = profs || [];
+          }
+          const profMap = new Map(memberProfiles.map(p => [p.id, p] as const));
+          (collabRows || []).forEach(r => {
+            const prof = profMap.get(r.user_id);
+            if (!prof) return;
+            (membersByProject[r.project_id] ||= []).push({
+              id: prof.id,
+              name: prof.name || 'Unknown',
+              avatar: prof.avatar || null,
+              year: prof.year || 'Unknown'
+            });
+          });
+        }
+
         const supabaseProjects = (rows || []).map(p => {
           const author = owners.find(o => o.id === p.owner_id);
           const likeCount = likeCounts[p.id] || 0;
@@ -188,7 +217,7 @@ export default function App() {
             },
             stats: { views: 0, downloads: 0, likes: likeCount },
             media: { all: [], images: [], videos: [], downloads: [] },
-            members: []
+            members: membersByProject[p.id] || []
           };
         });
         setProjects(supabaseProjects);
@@ -368,6 +397,35 @@ export default function App() {
 
       const likeCounts = await getProjectLikeCounts(supabase, projectIds);
 
+      // Fetch collaborators and their profiles
+      let membersByProject: Record<string, any[]> = {};
+      if (projectIds.length) {
+        const { data: collabRows } = await supabase
+          .from('project_collaborators')
+          .select('project_id, user_id')
+          .in('project_id', projectIds);
+        const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
+        let memberProfiles: any[] = [];
+        if (memberIds.length) {
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, name, avatar, year')
+            .in('id', memberIds);
+          memberProfiles = profs || [];
+        }
+        const profMap = new Map(memberProfiles.map(p => [p.id, p] as const));
+        (collabRows || []).forEach(r => {
+          const prof = profMap.get(r.user_id);
+          if (!prof) return;
+          (membersByProject[r.project_id] ||= []).push({
+            id: prof.id,
+            name: prof.name || 'Unknown',
+            avatar: prof.avatar || null,
+            year: prof.year || 'Unknown'
+          });
+        });
+      }
+
       const supabaseProjects = (rows || []).map(p => {
         const author = owners.find(o => o.id === p.owner_id);
         const likeCount = likeCounts[p.id] || 0;
@@ -400,7 +458,7 @@ export default function App() {
           },
           stats: { views: 0, downloads: 0, likes: likeCount },
           media: { all: [], images: [], videos: [], downloads: [] },
-          members: []
+          members: membersByProject[p.id] || []
         };
       });
       setProjects(supabaseProjects);
@@ -477,6 +535,7 @@ export default function App() {
                     currentUser={currentUser}
                     onProjectClick={handleProjectClick}
                     onNavigate={handleNavigate}
+                    onUserUpdated={(u) => setCurrentUser(u)}
                   />
                 ) : (
                   <div className="max-w-7xl mx-auto px-6 py-8">

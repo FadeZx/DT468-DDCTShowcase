@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -9,6 +9,7 @@ import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { ProjectCard } from './ProjectCard';
 import { ProfileThemeEditor, ProfileTheme } from './ProfileThemeEditor';
+import supabase from '../utils/supabase/client';
 import { 
   Edit, Download, Mail, Github, Linkedin, ExternalLink,
   Calendar, MapPin, Award, BookOpen, Settings, UserPlus, Shield, Palette, X
@@ -21,13 +22,24 @@ interface UserProfileProps {
   currentUser: any;
   onProjectClick: (projectId: string) => void;
   onNavigate?: (page: string) => void;
+  onUserUpdated?: (u: any) => void;
 }
 
-export function UserProfile({ user, projects, isOwnProfile, currentUser, onProjectClick, onNavigate }: UserProfileProps) {
+export function UserProfile({ user, projects, isOwnProfile, currentUser, onProjectClick, onNavigate, onUserUpdated }: UserProfileProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedUser, setEditedUser] = useState(user);
   const [showInlineTheme, setShowInlineTheme] = useState(false);
   const [themeSidebarOpen, setThemeSidebarOpen] = useState(false);
+  const [newSkill, setNewSkill] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const displayAvatar = useMemo(
+    () => avatarPreview || editedUser.avatar || user.avatar || null,
+    [avatarPreview, editedUser.avatar, user.avatar]
+  );
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -50,9 +62,57 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   const orderedProjects = combinedProjects.slice().sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
   const visibleProjects = orderedProjects.filter(p => !theme.hiddenProjects.includes(p.id));
 
-  const handleSave = () => {
-    // Here would be the logic to save user changes (persist to backend)
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      // If a new avatar file was chosen, upload on Save.
+      if (avatarFile) {
+        setAvatarBusy(true);
+        setAvatarError(null);
+        const ext = (avatarFile.name.split('.').pop() || 'png').toLowerCase();
+        const path = `${user.id}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase
+          .storage
+          .from('avatars')
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        if (uploadError) throw uploadError;
+        const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+        const publicUrl = pub.publicUrl;
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ avatar: publicUrl })
+          .eq('id', user.id);
+        if (updateError) throw updateError;
+        setEditedUser((prev: any) => ({ ...prev, avatar: publicUrl }));
+      }
+      // Update profile fields in DB
+      const updates: any = {};
+      if (editedUser.name !== user.name) updates.name = editedUser.name;
+      if (editedUser.year !== user.year) updates.year = editedUser.year;
+      if (editedUser.bio !== user.bio) updates.bio = editedUser.bio || null;
+      if (Array.isArray(editedUser.skills)) updates.skills = editedUser.skills;
+      if (editedUser.email && editedUser.email !== user.email) updates.email = editedUser.email;
+      if (editedUser.location !== user.location) updates.location = editedUser.location || null;
+      if (editedUser.majors !== user.majors) updates.majors = editedUser.majors || null;
+      if (editedUser.github !== user.github) updates.github = editedUser.github || null;
+      if (editedUser.linkedin !== user.linkedin) updates.linkedin = editedUser.linkedin || null;
+      if (editedUser.portfolio !== user.portfolio) updates.portfolio = editedUser.portfolio || null;
+      if (Object.keys(updates).length > 0) {
+        const { error: updateInfoError } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', user.id);
+        if (updateInfoError) throw updateInfoError;
+      }
+
+      const merged = { ...user, ...editedUser };
+      onUserUpdated?.(merged);
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error('Save error:', err);
+      setAvatarError(err?.message || 'Failed to save profile');
+    } finally {
+      setAvatarBusy(false);
+    }
   };
 
   const handleReorder = (projectId: string, direction: 'up' | 'down') => {
@@ -86,7 +146,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8" style={{ 
+    <div className="max-w-7xl mx-auto px-6 py-8 cursor-default select-none" style={{ 
       background: theme.colors.background,
       color: theme.colors.text,
       fontFamily: theme.typography.fontFamily,
@@ -103,19 +163,74 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
           backgroundPosition: 'center',
         }} />
       )}
+      {isOwnProfile && !isEditing && (
+        <div className="flex items-center justify-end gap-2 mb-4">
+          <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
+            <Edit className="mr-2 h-4 w-4" />
+            Edit Profile
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setThemeSidebarOpen(true)}>
+            <Palette className="mr-2 h-4 w-4" />
+            Theme
+          </Button>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Profile Sidebar */}
         <div className="space-y-6">
           {/* Profile Card */}
           <Card>
             <CardContent className="p-6 text-center">
-              <Avatar className="w-24 h-24 mx-auto mb-4">
-                <AvatarImage src="/placeholder-avatar.svg" />
-                <AvatarFallback className="text-2xl">{user.name[0]}</AvatarFallback>
-              </Avatar>
+              <div className={`mx-auto mb-4 w-24 h-24 relative ${isEditing ? 'group' : ''}`}>
+                <Avatar className="w-24 h-24">
+                  <AvatarImage
+                    src={displayAvatar || undefined}
+                    alt={editedUser.name}
+                    className={isEditing ? 'transition-transform duration-200 group-hover:scale-[1.02]' : ''}
+                  />
+                  <AvatarImage src="/placeholder-avatar.svg" />
+                  <AvatarFallback className="text-2xl">{editedUser.name[0]}</AvatarFallback>
+                </Avatar>
+                {isEditing && (
+                  <button
+                    type="button"
+                    className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Change photo"
+                  >
+                    {/* Simple camera icon */}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-6 h-6">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                  </button>
+                )}
+                {isEditing && (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      setAvatarError(null);
+                      const f = (e.target as HTMLInputElement).files?.[0] || null;
+                      if (!f) { setAvatarFile(null); setAvatarPreview(null); return; }
+                      if (!f.type.startsWith('image/')) { setAvatarError('Please choose an image file'); return; }
+                      if (f.size > 5 * 1024 * 1024) { setAvatarError('Image is too large (max 5MB)'); return; }
+                      setAvatarFile(f);
+                      const url = URL.createObjectURL(f);
+                      setAvatarPreview(url);
+                    }}
+                    className="hidden"
+                    hidden
+                    aria-hidden="true"
+                    style={{ display: 'none' }}
+                  />
+                )}
+              </div>
               
               {isEditing ? (
                 <div className="space-y-4">
+                  {avatarError && <div className="text-sm text-red-600">{avatarError}</div>}
                   <Input
                     value={editedUser.name}
                     onChange={(e) => setEditedUser({...editedUser, name: e.target.value})}
@@ -162,11 +277,55 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                     onChange={(e) => setEditedUser({...editedUser, portfolio: e.target.value})}
                     placeholder="Portfolio URL"
                   />
-                  <Input
-                    value={(editedUser.skills || []).join(', ')}
-                    onChange={(e) => setEditedUser({...editedUser, skills: e.target.value.split(',').map((s) => s.trim()).filter(Boolean)})}
-                    placeholder="Skills (comma-separated)"
-                  />
+                  <div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(editedUser.skills || []).map((skill: string) => (
+                        <span
+                          key={skill}
+                          className="inline-flex items-center gap-1 rounded-full bg-secondary text-secondary-foreground px-2 py-1 text-xs"
+                        >
+                          {skill}
+                          <button
+                            type="button"
+                            className="ml-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                            aria-label={`Remove ${skill}`}
+                            onClick={() => {
+                              const next = (editedUser.skills || []).filter((s: string) => s !== skill);
+                              setEditedUser({ ...editedUser, skills: next });
+                            }}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <Input
+                      value={newSkill}
+                      onChange={(e) => setNewSkill(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          const tokens = newSkill.split(/[\n,]/).map(t => t.trim()).filter(Boolean);
+                          if (tokens.length) {
+                            const set = new Set([...(editedUser.skills || [])]);
+                            tokens.forEach(t => set.add(t));
+                            setEditedUser({ ...editedUser, skills: Array.from(set) });
+                            setNewSkill('');
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        const tokens = newSkill.split(/[\n,]/).map(t => t.trim()).filter(Boolean);
+                        if (tokens.length) {
+                          const set = new Set([...(editedUser.skills || [])]);
+                          tokens.forEach(t => set.add(t));
+                          setEditedUser({ ...editedUser, skills: Array.from(set) });
+                          setNewSkill('');
+                        }
+                      }}
+                      placeholder="Type a skill and press Enter"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <Button onClick={handleSave} size="sm">Save</Button>
                     <Button onClick={() => setIsEditing(false)} variant="outline" size="sm">
@@ -187,18 +346,6 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                   )}
                   
                   <div className="flex flex-col gap-2">
-                    {isOwnProfile && (
-                      <div className="flex gap-2">
-                        <Button onClick={() => setIsEditing(true)} variant="outline" size="sm">
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit Profile
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => setThemeSidebarOpen(true)}>
-                          <Palette className="mr-2 h-4 w-4" />
-                          Theme
-                        </Button>
-                      </div>
-                    )}
 
                     {showInlineTheme && (
                       <Card className="mt-4">
@@ -232,74 +379,89 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
           </Card>
 
           {/* Contact Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {user.email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{user.email}</span>
-                </div>
-              )}
-              
-              {user.location && (
-                <div className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{user.location}</span>
-                </div>
-              )}
-              
-              {user.joinDate && (
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">Joined {user.joinDate}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {(editedUser.email || editedUser.location || editedUser.joinDate) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Contact Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {editedUser.email && (
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm select-text">{editedUser.email}</span>
+                  </div>
+                )}
+                
+                {editedUser.location && (
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm select-text">{editedUser.location}</span>
+                  </div>
+                )}
+                
+                {editedUser.joinDate && (
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm select-text">Joined {editedUser.joinDate}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Social Links */}
-          {(user.github || user.linkedin || user.portfolio) && (
+          {(editedUser.github || editedUser.linkedin || editedUser.portfolio) && (
             <Card>
               <CardHeader>
                 <CardTitle>Links</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {user.github && (
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                {editedUser.github && (
+                  <a
+                    href={editedUser.github}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="w-full inline-flex items-center justify-start rounded-md border px-3 py-2 hover:bg-accent hover:text-accent-foreground transition cursor-pointer"
+                  >
                     <Github className="mr-2 h-4 w-4" />
-                    GitHub
-                  </Button>
+                    <span className="text-sm">GitHub</span>
+                  </a>
                 )}
-                
-                {user.linkedin && (
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                {editedUser.linkedin && (
+                  <a
+                    href={editedUser.linkedin}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="w-full inline-flex items-center justify-start rounded-md border px-3 py-2 hover:bg-accent hover:text-accent-foreground transition cursor-pointer"
+                  >
                     <Linkedin className="mr-2 h-4 w-4" />
-                    LinkedIn
-                  </Button>
+                    <span className="text-sm">LinkedIn</span>
+                  </a>
                 )}
-                
-                {user.portfolio && (
-                  <Button variant="outline" size="sm" className="w-full justify-start">
+                {editedUser.portfolio && (
+                  <a
+                    href={editedUser.portfolio}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="w-full inline-flex items-center justify-start rounded-md border px-3 py-2 hover:bg-accent hover:text-accent-foreground transition cursor-pointer"
+                  >
                     <ExternalLink className="mr-2 h-4 w-4" />
-                    Portfolio
-                  </Button>
+                    <span className="text-sm">Portfolio</span>
+                  </a>
                 )}
               </CardContent>
             </Card>
           )}
 
           {/* Skills */}
-          {user.skills && (
+          {editedUser.skills && editedUser.skills.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Skills</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {user.skills.map((skill: string) => (
+                  {editedUser.skills.map((skill: string) => (
                     <Badge key={skill} variant="secondary">
                       {skill}
                     </Badge>

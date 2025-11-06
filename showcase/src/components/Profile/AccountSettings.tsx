@@ -113,6 +113,8 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
     }
   };
 
+  
+
   const togglePasswordVisibility = (field: 'current' | 'new' | 'confirm') => {
     setShowPasswords(prev => ({
       ...prev,
@@ -197,14 +199,14 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                 {user.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="w-16 h-16 rounded-full" />
+                  <img src={user.avatar} alt={user.name} className="w-16 h-16 object-cover" />
                 ) : (
-                  <img src="/placeholder-avatar.svg" alt={user.name} className="w-16 h-16 rounded-full" />
+                  <img src="/placeholder-avatar.svg" alt={user.name} className="w-16 h-16" />
                 )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-xl font-semibold">{user.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge className={getRoleBadgeColor(user.role)}>
@@ -213,7 +215,9 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                   </Badge>
                 </div>
               </div>
+              
             </div>
+            
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
               <div className="flex items-center gap-3">

@@ -19,6 +19,7 @@ interface Member {
   name: string;
   email: string;
   role: string;
+  avatar?: string | null;
 }
 
 export default function UploadProjectPage({
@@ -49,7 +50,7 @@ export default function UploadProjectPage({
         const memberIds = memberLinks.map(link => link.user_id);
         const { data: memberProfiles } = await supabase
           .from('profiles')
-          .select('id, name, email')
+          .select('id, name, email, avatar')
           .in('id', memberIds);
 
         const memberEntries = (memberProfiles || []).map(profile => {
@@ -58,7 +59,8 @@ export default function UploadProjectPage({
             id: profile.id,
             name: profile.name || profile.email || 'Member',
             email: profile.email || '',
-            role: link?.role || 'editor'
+            role: link?.role || 'editor',
+            avatar: profile.avatar || null,
           };
         });
 
@@ -78,7 +80,7 @@ export default function UploadProjectPage({
       // Search for user by email or username
       const { data: users, error } = await supabase
         .from('profiles')
-        .select('id, name, email')
+        .select('id, name, email, avatar')
         .or(`email.eq.${newMember.trim()},name.ilike.%${newMember.trim()}%`);
 
       if (error) throw error;
@@ -92,7 +94,8 @@ export default function UploadProjectPage({
               id: user.id,
               name: user.name || user.email || 'Member',
               email: user.email || '',
-              role: 'editor'
+              role: 'editor',
+              avatar: user.avatar || null,
             }
           ]);
           setNewMember('');
@@ -221,6 +224,7 @@ export default function UploadProjectPage({
                           <div key={member.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
                             <div className="flex items-center gap-3">
                               <Avatar className="w-10 h-10">
+                                <AvatarImage src={member.avatar || undefined} />
                                 <AvatarImage src="/placeholder-avatar.svg" />
                                 <AvatarFallback>
                                   {member.name?.charAt(0)?.toUpperCase() || 'U'}
