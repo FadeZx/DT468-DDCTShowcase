@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
@@ -9,8 +9,9 @@ import {
 } from 'recharts';
 import { 
   Users, BookOpen, Award, TrendingUp, Download, 
-  Calendar, Filter, FileText, Settings 
+  Calendar, Filter, FileText, Settings, MessageSquare, Image as ImageIcon, Video as VideoIcon 
 } from 'lucide-react';
+import supabase from '../utils/supabase/client';
 
 interface AdminDashboardProps {
   projects: any[];
@@ -20,48 +21,129 @@ interface AdminDashboardProps {
 export function AdminDashboard({ projects, users }: AdminDashboardProps) {
   const [selectedYear, setSelectedYear] = useState('2024');
   const [exportFormat, setExportFormat] = useState<'csv' | 'json' | 'pdf'>('csv');
+  const [showFilters, setShowFilters] = useState(false);
+  // Filter: project owner (author) student year
+  const yearOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of projects) {
+      const y = p.author?.year || 'Unknown';
+      if (y) set.add(y);
+    }
+    return ['All', ...Array.from(set).sort((a,b) => String(a).localeCompare(String(b)))];
+  }, [projects]);
+  const [studentYearFilter, setStudentYearFilter] = useState<string>('All');
   const analyticsRef = useRef<HTMLDivElement>(null);
 
-  // Calculate statistics
+  // Calculate statistics from real data
   const totalProjects = projects.length;
   const totalStudents = users.filter(u => u.role === 'student').length;
   const featuredProjects = projects.filter(p => p.featured).length;
   const totalViews = projects.reduce((sum, p) => sum + (p.stats?.views || 0), 0);
 
-  // Projects by category data
-  const categoryData = [
-    { name: 'Games', count: projects.filter(p => p.category === 'Games').length, color: '#ff6b35' },
-    { name: 'Animations', count: projects.filter(p => p.category === 'Animations').length, color: '#4ade80' },
-    { name: 'Digital Art', count: projects.filter(p => p.category === 'Digital Art').length, color: '#60a5fa' },
-    { name: 'Simulations', count: projects.filter(p => p.category === 'Simulations').length, color: '#f59e0b' },
-    { name: 'Others', count: projects.filter(p => p.category === 'Others').length, color: '#ec4899' }
-  ];
+  // Dynamic project categories
+  const categoryData = useMemo(() => {
+    const filtered = studentYearFilter === 'All'
+      ? projects
+      : projects.filter(p => (p.author?.year || 'Unknown') === studentYearFilter);
+    const colorPalette = ['#ff6b35', '#4ade80', '#60a5fa', '#f59e0b', '#ec4899', '#a78bfa', '#34d399', '#f472b6', '#f87171', '#22d3ee'];
+    const map = new Map<string, number>();
+    for (const p of filtered) {
+      const key = (p.category || 'Uncategorized').trim() || 'Uncategorized';
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    const entries = Array.from(map.entries()).sort((a,b) => b[1]-a[1]);
+    return entries.map(([name, count], i) => ({ name, count, color: colorPalette[i % colorPalette.length] }));
+  }, [projects, studentYearFilter]);
 
   // Projects by student year
-  const yearData = [
-    { year: '68', count: projects.filter(p => p.author.year === '68').length },
-    { year: '67', count: projects.filter(p => p.author.year === '67').length },
-    { year: '66', count: projects.filter(p => p.author.year === '66').length },
-    { year: '65', count: projects.filter(p => p.author.year === '65').length }
-  ];
+  const yearData = useMemo(() => {
+    const ym = new Map<string, number>();
+    for (const p of projects) {
+      const y = p.author?.year || 'Unknown';
+      ym.set(y, (ym.get(y) || 0) + 1);
+    }
+    return Array.from(ym.entries()).map(([year, count]) => ({ year, count })).sort((a,b) => String(a.year).localeCompare(String(b.year)));
+  }, [projects]);
 
-  // Monthly project submissions (mock data)
-  const monthlyData = [
-    { month: 'Jan', projects: 12, views: 1200 },
-    { month: 'Feb', projects: 15, views: 1500 },
-    { month: 'Mar', projects: 18, views: 2100 },
-    { month: 'Apr', projects: 22, views: 2800 },
-    { month: 'May', projects: 25, views: 3200 },
-    { month: 'Jun', projects: 20, views: 2900 },
-    { month: 'Jul', projects: 16, views: 2200 },
-    { month: 'Aug', projects: 19, views: 2600 },
-    { month: 'Sep', projects: 28, views: 3800 },
-    { month: 'Oct', projects: 32, views: 4200 },
-    { month: 'Nov', projects: 24, views: 3500 },
-    { month: 'Dec', projects: 18, views: 2800 }
-  ];
+  // Monthly project submissions from created_at (last 12 months)
+  const monthlyData = useMemo(() => {
+    const now = new Date();
+    const months: { key: string; month: string; projects: number; views: number }[] = [];
+    for (let i=11;i>=0;i--) {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const label = d.toLocaleString(undefined, { month: 'short' });
+      months.push({ key, month: label, projects: 0, views: 0 });
+    }
+    const indexByKey = new Map(months.map((m, idx) => [m.key, idx] as const));
+    for (const p of projects) {
+      const t = new Date(p.created_at || p.updated_at || Date.now());
+      const key = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
+      const idx = indexByKey.get(key);
+      if (idx !== undefined) months[idx].projects += 1;
+    }
+    return months;
+  }, [projects]);
+
+  // Tag popularity
+  const topTags = useMemo(() => {
+    const tm = new Map<string, number>();
+    for (const p of projects) {
+      const tags: string[] = Array.isArray(p.tags) ? p.tags : [];
+      for (const raw of tags) {
+        const t = (raw || '').trim();
+        if (!t) continue;
+        tm.set(t, (tm.get(t) || 0) + 1);
+      }
+    }
+    return Array.from(tm.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a,b) => b.count - a.count)
+      .slice(0, 12);
+  }, [projects]);
+
+  // Engagement and media stats from Supabase
+  const [engagement, setEngagement] = useState<{ totalLikes: number; totalComments: number }>({ totalLikes: 0, totalComments: 0 });
+  const [mediaCounts, setMediaCounts] = useState<{ image: number; video: number; project: number; document: number }>({ image: 0, video: 0, project: 0, document: 0 });
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const [likesRes, commentsRes, imgRes, vidRes, projRes, docRes] = await Promise.all([
+          supabase.from('project_likes').select('id', { count: 'exact', head: true }),
+          supabase.from('project_comments').select('id', { count: 'exact', head: true }),
+          supabase.from('project_files').select('id', { count: 'exact', head: true }).eq('file_type', 'image'),
+          supabase.from('project_files').select('id', { count: 'exact', head: true }).eq('file_type', 'video'),
+          supabase.from('project_files').select('id', { count: 'exact', head: true }).eq('file_type', 'project'),
+          supabase.from('project_files').select('id', { count: 'exact', head: true }).eq('file_type', 'document'),
+        ]);
+        if (!mounted) return;
+        setEngagement({ totalLikes: likesRes.count || 0, totalComments: commentsRes.count || 0 });
+        setMediaCounts({
+          image: imgRes.count || 0,
+          video: vidRes.count || 0,
+          project: projRes.count || 0,
+          document: docRes.count || 0,
+        });
+      } catch {
+        if (mounted) {
+          setEngagement({ totalLikes: 0, totalComments: 0 });
+          setMediaCounts({ image: 0, video: 0, project: 0, document: 0 });
+        }
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   const recentProjects = projects.slice(0, 10);
+  const topProjectsByLikes = useMemo(() => {
+    return [...projects]
+      .sort((a: any, b: any) => (b.stats?.likes || 0) - (a.stats?.likes || 0))
+      .slice(0, 5)
+      .map((p: any) => ({ id: p.id, title: p.title, likes: p.stats?.likes || 0, category: p.category || 'Uncategorized' }));
+  }, [projects]);
 
   function toCSV(rows: any[]): string {
     if (!rows.length) return '';
@@ -451,7 +533,14 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
         </div>
         
         <div className="flex items-center gap-4">
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowFilters((v) => !v);
+              // bring analytics filters into view
+              try { analyticsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+            }}
+          >
             <Filter className="mr-2 h-4 w-4" />
             Filter
           </Button>
@@ -541,6 +630,20 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
         </TabsList>
 
         <TabsContent value="analytics" className="space-y-6">
+          {showFilters && (
+            <div className="flex items-center justify-end gap-3">
+              <label className="text-sm text-muted-foreground">Student year (owner):</label>
+              <select
+                value={studentYearFilter}
+                onChange={(e) => setStudentYearFilter(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                {yearOptions.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div ref={analyticsRef}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Projects by Category */}
@@ -570,19 +673,19 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
                 </CardContent>
               </Card>
 
-              {/* Projects by Student Year */}
+              {/* Top Tags */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Projects by Student Year</CardTitle>
+                  <CardTitle>Top Tags</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={yearData}>
+                    <BarChart data={topTags.map(t => ({ name: t.tag, count: t.count }))}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="year" />
+                      <XAxis dataKey="name" interval={0} angle={-30} textAnchor="end" height={60} />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="count" fill="#ff6b35" />
+                      <Bar dataKey="count" fill="#60a5fa" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -622,6 +725,65 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Engagement</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 rounded-lg bg-muted/30">
+                    <div className="text-sm text-muted-foreground flex items-center gap-2"><TrendingUp className="w-4 h-4"/>Total Likes</div>
+                    <div className="text-2xl font-bold">{engagement.totalLikes}</div>
+                    <div className="text-xs text-muted-foreground">avg {(totalProjects? (engagement.totalLikes/totalProjects):0).toFixed(1)} / project</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-muted/30">
+                    <div className="text-sm text-muted-foreground flex items-center gap-2"><MessageSquare className="w-4 h-4"/>Total Comments</div>
+                    <div className="text-2xl font-bold">{engagement.totalComments}</div>
+                    <div className="text-xs text-muted-foreground">discussion across projects</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Media Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between"><span className="flex items-center gap-2"><ImageIcon className="w-4 h-4"/>Images</span><span className="font-medium">{mediaCounts.image}</span></div>
+                  <div className="flex items-center justify-between"><span className="flex items-center gap-2"><VideoIcon className="w-4 h-4"/>Videos</span><span className="font-medium">{mediaCounts.video}</span></div>
+                  <div className="flex items-center justify-between"><span>Project Files</span><span className="font-medium">{mediaCounts.project}</span></div>
+                  <div className="flex items-center justify-between"><span>Documents</span><span className="font-medium">{mediaCounts.document}</span></div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Top Projects by Likes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {topProjectsByLikes.map(p => (
+                    <div key={p.id} className="flex items-center justify-between">
+                      <div className="truncate max-w-[70%]">
+                        <div className="font-medium truncate">{p.title}</div>
+                        <div className="text-xs text-muted-foreground truncate">{p.category}</div>
+                      </div>
+                      <div className="text-sm font-semibold">{p.likes}</div>
+                    </div>
+                  ))}
+                  {topProjectsByLikes.length === 0 && (
+                    <div className="text-sm text-muted-foreground">No likes yet.</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6">

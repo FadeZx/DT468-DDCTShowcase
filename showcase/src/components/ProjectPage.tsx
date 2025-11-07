@@ -30,6 +30,15 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   const [activeTab, setActiveTab] = useState('overview');
   const [projectFiles, setProjectFiles] = useState<any[]>(project.media?.all || project.media || []);
   const [loading, setLoading] = useState(!(project.media?.all?.length || project.media?.length));
+  // Ensure we start at the top when entering the project page
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {
+      // Fallback for environments that don't support the options object
+      window.scrollTo(0, 0);
+    }
+  }, []);
   // Steam-like gallery state (using placeholders for now)
   const placeholderImages = [
     'https://picsum.photos/seed/1/1280/720',
