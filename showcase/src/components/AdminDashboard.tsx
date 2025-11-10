@@ -12,6 +12,7 @@ import {
   Calendar, Filter, FileText, Settings, MessageSquare, Image as ImageIcon, Video as VideoIcon 
 } from 'lucide-react';
 import supabase from '../utils/supabase/client';
+import { cleanupOrphanedProjectStorage } from '../utils/fileStorage';
 
 interface AdminDashboardProps {
   projects: any[];
@@ -21,6 +22,20 @@ interface AdminDashboardProps {
 export function AdminDashboard({ projects, users }: AdminDashboardProps) {
   const [selectedYear, setSelectedYear] = useState('2024');
   const [exportFormat, setExportFormat] = useState<'csv' | 'json' | 'pdf'>('csv');
+  const [cleaning, setCleaning] = useState(false);
+  const handleCleanStorage = async () => {
+    if (cleaning) return;
+    setCleaning(true);
+    try {
+      const { removed, kept } = await cleanupOrphanedProjectStorage();
+      alert(`Orphaned storage cleanup completed. Removed ${removed} files. Kept ${kept}.`);
+    } catch (e) {
+      console.error('Cleanup failed', e);
+      alert('Storage cleanup failed. See console for details.');
+    } finally {
+      setCleaning(false);
+    }
+  };
   const [showFilters, setShowFilters] = useState(false);
   // Filter: project owner (author) student year
   const yearOptions = useMemo(() => {

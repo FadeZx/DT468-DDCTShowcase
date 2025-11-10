@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -14,6 +14,7 @@ import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
 import { ProjectComments } from './ProjectComments';
+import { getDownloadUrl } from '../utils/fileStorage';
 import { useProjectLikes } from '../hooks/useProjectLikes';
 
 interface ProjectPageProps {
@@ -208,6 +209,46 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   const downloadableFiles = projectFiles.filter(file => 
     file.file_type === 'project' || file.file_type === 'document'
   );
+  const handleDownload = async (file: any) => {
+    try {
+      let url = '';
+      const path = file.file_path as string | undefined;
+      const fileName = (file.file_name as string | undefined) || 'download';
+      // Prefer storage path so we can request a download-disposition URL
+      if (path) {
+        url = await getDownloadUrl(String(path), fileName, 3600);
+      } else if (file.file_url && (String(file.file_url).startsWith('http') || String(file.file_url).startsWith('/'))) {
+        // If only a direct URL exists, fall back to it
+        url = String(file.file_url);
+      }
+      if (!url) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      // Do not set target; let browser download directly
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      console.error('[ProjectPage] Download error', e);
+      try {
+        let fallback = '';
+        if (file.file_path) {
+          fallback = await getDownloadUrl(String(file.file_path), String(file.file_name || 'download'), 3600);
+        } else if (file.file_url) {
+          fallback = String(file.file_url);
+        }
+        if (fallback) {
+          const a = document.createElement('a');
+          a.href = fallback;
+          a.download = String(file.file_name || 'download');
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } catch {}
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -478,12 +519,10 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                               {file.file_type} • {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
                             </p>
                           </div>
-                          <Button variant="outline" size="sm" asChild>
-                            <a href={file.file_url} download target="_blank" rel="noopener noreferrer">
-                              <Download className="w-4 h-4 mr-2" />
-                              Download
-                            </a>
-                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>
+  <Download className="w-4 h-4 mr-2" />
+  Download
+</Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -735,3 +774,4 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     </div>
   );
 }
+

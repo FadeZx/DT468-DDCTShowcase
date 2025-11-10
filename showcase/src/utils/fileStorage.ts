@@ -221,3 +221,82 @@ export async function getBestFileUrl(filePath: string, expiresInSeconds = 3600):
   const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return data.publicUrl;
 }
+
+// Prefer URLs that instruct the browser to download (Content-Disposition)
+export async function getDownloadUrl(
+  filePath: string,
+  fileName?: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  const bucket = 'project-files';
+  // Try signed URL with download disposition
+  try {
+    const { data, error } = await (supabase.storage
+      .from(bucket)
+      // @ts-expect-error: options typing differs by sdk version; runtime supports { download }
+      .createSignedUrl(filePath, expiresInSeconds, { download: fileName || true }));
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch {}
+
+  // Fallback: public URL with download hint (SDK may append ?download)
+  try {
+    // @ts-expect-error: older typings may not include options
+    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath, { download: fileName || true });
+    if (data?.publicUrl) return data.publicUrl;
+  } catch {}
+
+  // Last resort: append ?download param manually
+  try {
+    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    const base = data?.publicUrl || '';
+    if (!base) return base;
+    const url = new URL(base);
+    url.searchParams.set('download', String(fileName || ''));
+    return url.toString();
+  } catch {}
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
+// Remove any storage files under projects/<id>/ that no longer exist in the projects table
+export async function cleanupOrphanedProjectStorage(): Promise<{ removed: number; kept: number }> {
+  const bucket = 'project-files';
+  // 1) Load existing project IDs
+  let existingIds = new Set<string>();
+  try {
+    const { data: rows } = await (supabase
+      .from('projects')
+      .select('id'));
+    (rows || []).forEach((r: any) => { if (r?.id) existingIds.add(String(r.id)); });
+  } catch (e) {
+    console.warn('cleanupOrphanedProjectStorage: failed to fetch projects', e);
+  }
+
+  // 2) List all files under projects/
+  const entries = await listAllInPrefix('projects');
+  const toRemove: string[] = [];
+  let kept = 0;
+  for (const e of entries) {
+    const path = String(e.path || '');
+    const m = path.match(/^projects\/([^/]+)\//);
+    const pid = m ? m[1] : '';
+    if (pid && !existingIds.has(pid)) {
+      toRemove.push(path);
+    } else {
+      kept += 1;
+    }
+  }
+
+  // 3) Remove orphaned files
+  let removed = 0;
+  if (toRemove.length) {
+    const { error } = await supabase.storage.from(bucket).remove(toRemove);
+    if (error) {
+      console.warn('cleanupOrphanedProjectStorage: remove error', error);
+    } else {
+      removed = toRemove.length;
+    }
+  }
+  return { removed, kept };
+}

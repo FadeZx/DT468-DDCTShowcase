@@ -15,6 +15,7 @@ import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
 import supabase from './utils/supabase/client';
 import { getProjectLikeCounts } from './utils/projectLikes';
+import { listProjectStorage } from './utils/fileStorage';
 
 
 // Wrapper component for ProjectPage to handle dynamic project lookup and page-loading ready callback
@@ -353,33 +354,36 @@ export default function App() {
         return;
       }
 
-      // Load related files before deletion for storage cleanup
-      const { data: files } = await supabase
-        .from('project_files')
-        .select('file_path')
-        .eq('project_id', projectId);
-
-      // Delete project files rows
-      await supabase
-        .from('project_files')
-        .delete()
-        .eq('project_id', projectId);
-
-      // Delete storage objects under the 'projects' bucket when path prefixed with 'projects/'
-      const storagePaths = (files || [])
-        .map((f: any) => f.file_path)
-        .filter((p: string) => typeof p === 'string' && p.startsWith('projects/'))
-        .map((p: string) => p.replace(/^projects\//, ''));
-      if (storagePaths.length) {
-        await supabase.storage.from('projects').remove(storagePaths);
+      // 1) Delete storage objects for this project under the 'project-files' bucket
+      try {
+        const entries = await listProjectStorage(projectId);
+        const allPaths = (entries || [])
+          .map((e: any) => e.path as string)
+          .filter((p) => typeof p === 'string' && p.startsWith(`projects/${projectId}/`));
+        if (allPaths.length) {
+          const { error: rmErr } = await supabase.storage.from('project-files').remove(allPaths);
+          if (rmErr) console.warn('Storage remove warning:', rmErr);
+        }
+      } catch (e) {
+        console.warn('Storage cleanup failed (non-fatal):', e);
       }
 
-      // Delete project row
-      const { error: delErr } = await supabase
+      // 2) Delete related DB rows
+      try { await supabase.from('project_comments').delete().eq('project_id', projectId); } catch {}
+      try { await supabase.from('project_likes').delete().eq('project_id', projectId); } catch {}
+      try { await supabase.from('project_collaborators').delete().eq('project_id', projectId); } catch {}
+      try { await supabase.from('project_files').delete().eq('project_id', projectId); } catch {}
+
+      // 3) Delete project row (return deleted rows to detect RLS blocks)
+      const { data: deletedRows, error: delErr } = await supabase
         .from('projects')
         .delete()
-        .eq('id', projectId);
+        .eq('id', projectId)
+        .select('id');
       if (delErr) throw delErr;
+      if (!deletedRows || deletedRows.length === 0) {
+        throw new Error('Delete was blocked by RLS (no rows removed)');
+      }
 
       // Update local state and navigate home
       setProjects((prev) => prev.filter((p) => p.id !== projectId));
