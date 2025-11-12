@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
+import ReactPlayer from 'react-player';
 import { ProjectComments } from './ProjectComments';
 import { getDownloadUrl } from '../utils/fileStorage';
 import { useProjectLikes } from '../hooks/useProjectLikes';
@@ -208,14 +209,26 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   );
   console.log('[ProjectPage] galleryMedia built:', { projectId: project.id, count: galleryMedia.length, galleryMedia, rawFilesCount: projectFiles.length, rawFiles: projectFiles });
 
-  // Autoplay main gallery every 4s; pauses on hover or if only 1 item
+  // Autoplay: images advance after delay; videos advance onEnded
   useEffect(() => {
     if (!autoPlay || isHoveringMain || galleryMedia.length <= 1) return;
-    const id = setInterval(() => {
+    const current = galleryMedia[activeIndex];
+    if (!current || current.type === 'video') return; // videos handled via onEnded
+    const id = setTimeout(() => {
       setActiveIndex((prev) => (galleryMedia.length ? (prev + 1) % galleryMedia.length : 0));
     }, 4000);
-    return () => clearInterval(id);
-  }, [autoPlay, isHoveringMain, galleryMedia.length]);
+    return () => clearTimeout(id);
+  }, [autoPlay, isHoveringMain, galleryMedia, activeIndex]);
+
+  // Preload next image to reduce perceived latency when advancing
+  useEffect(() => {
+    if (!galleryMedia.length) return;
+    const next = galleryMedia[(activeIndex + 1) % galleryMedia.length];
+    if (next?.type === 'image') {
+      const img = new Image();
+      img.src = next.url;
+    }
+  }, [activeIndex, galleryMedia]);
 
   // Keep active index in range when gallery changes
   useEffect(() => {
@@ -327,12 +340,20 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
                     {galleryMedia.length > 0 ? (
                       galleryMedia[activeIndex]?.type === 'video' ? (
-                        <iframe
-                          src={galleryMedia[activeIndex].url}
-                          title={galleryMedia[activeIndex].name || 'Project video'}
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                          className="absolute inset-0 w-full h-full"
+                        <ReactPlayer
+                          url={galleryMedia[activeIndex].url}
+                          width="100%"
+                          height="100%"
+                          playing={true}
+                          muted={true}
+                          controls={true}
+                          playsinline
+                          onEnded={() => setActiveIndex((prev) => (galleryMedia.length ? (prev + 1) % galleryMedia.length : 0))}
+                          className="absolute inset-0"
+                          config={{
+                            youtube: { playerVars: { rel: 0, modestbranding: 1 } },
+                            vimeo: { playerOptions: { byline: 0, title: 0, portrait: 0 } }
+                          }}
                         />
                       ) : (
                         <div className="absolute inset-0 w-full h-full flex items-center justify-center p-4">
@@ -678,7 +699,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <Eye className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Views</span>
                 </div>
-                <span className="font-semibold">{project.views || 0}</span>
+                <span className="font-semibold">{project.stats?.views || 0}</span>
               </div>
               
               <div className="flex items-center justify-between">

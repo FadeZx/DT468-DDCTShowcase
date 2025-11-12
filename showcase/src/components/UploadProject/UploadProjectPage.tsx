@@ -44,6 +44,7 @@ export default function UploadProjectPage({
   const [title, setTitle] = useState('');
   const [shortDescription, setShortDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [visibility, setVisibility] = useState<'draft' | 'private' | 'unlisted' | 'public'>('draft');
   const [descriptionHtml, setDescriptionHtml] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
@@ -136,13 +137,14 @@ export default function UploadProjectPage({
     if (newProjectId) return newProjectId;
     if (!currentUser?.id) throw new Error('Please sign in to create a project.');
     const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const resolvedCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
     const payload: any = {
       id,
       title: title?.trim() || 'Untitled Project',
       owner_id: currentUser.id,
       author_id: currentUser.id,
       visibility: 'draft',
-      category: category || null,
+      category: resolvedCategory,
       description: shortDescription || null,
       long_description: null,
       description_html: descriptionHtml || null,
@@ -500,7 +502,14 @@ export default function UploadProjectPage({
                     <option value="Animation">Animation</option>
                     <option value="Game">Game</option>
                     <option value="Simulation">Simulation</option>
+                    <option value="Others">Others</option>
                   </select>
+                  {category === 'Others' && (
+                    <div className="mt-2">
+                      <label className="block text-xs text-muted-foreground mb-1">Specify category</label>
+                      <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -739,7 +748,8 @@ export default function UploadProjectPage({
               try {
                 const pid = await ensureProject();
                 await uploadPending(pid);
-                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: category || null, description_html: descriptionHtml || null, tags }).eq('id', pid);
+                const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
+                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, description_html: descriptionHtml || null, tags }).eq('id', pid);
                 window.location.href = `/projects/${pid}`;
               } catch (e: any) { alert(e?.message || 'Failed to save'); }
             }}>Save</Button>

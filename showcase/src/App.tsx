@@ -28,13 +28,13 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onProjectUpdate: () => void;
-  onReady?: () => void;
+  onReady?: (projectId: string) => void;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const project = projects.find(p => p.id === projectId);
 
-  useEffect(() => { onReady?.(); }, []);
+  useEffect(() => { if (project) onReady?.(project.id); }, []);
 
   if (!project) {
     return (
@@ -287,6 +287,44 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
 
+  // Increment a project's view count once per session and reflect in UI
+  const incrementProjectView = async (projectId: string) => {
+    try {
+      const key = `viewed:${projectId}`;
+      const last = Number(sessionStorage.getItem(key) || 0);
+      // Prevent rapid duplicate increments within a short window (dev-friendly)
+      if (Date.now() - last < 60 * 1000) {
+        return;
+      }
+      sessionStorage.setItem(key, String(Date.now()));
+
+      // Optimistically update UI state
+      setProjects(prev => prev.map(p => p.id === projectId
+        ? { ...p, views: (p.views || 0) + 1, stats: { ...p.stats, views: (p.stats?.views || 0) + 1 } }
+        : p));
+
+      // Try to persist to Supabase (best-effort)
+      try {
+        const current = projects.find(p => p.id === projectId);
+        const nextViews = (current?.views || 0) + 1;
+        await supabase
+          .from('projects')
+          .update({ views: nextViews }, { returning: 'minimal' })
+          .eq('id', projectId);
+      } catch (e: any) {
+        // Common in RLS setups where UPDATE is blocked or 406 returned;
+        // UI already updated optimistically.
+        if (typeof e?.message === 'string' && e.message.includes('406')) {
+          console.warn('Persist skipped (406 Not Acceptable). Check RLS or use RPC.', e);
+        } else {
+          console.warn('Failed to persist view increment', e);
+        }
+      }
+    } catch (e) {
+      console.warn('incrementProjectView error', e);
+    }
+  };
+
   // Load only real projects from Supabase (remove mock templates)
   useEffect(() => {
     (async () => {
@@ -369,15 +407,15 @@ export default function App() {
             title: p.title,
             description: p.description,
             long_description: p.long_description || '',
-            category: p.category || 'Uncategorized',
+            category: p.category || 'Others',
             featured: false,
             created_at: p.created_at,
             updated_at: p.updated_at,
             status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
             author_id: p.owner_id,
             cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
-            views: 0,
-            downloads: 0,
+            views: Number((p as any).views) || 0,
+            downloads: Number((p as any).downloads) || 0,
             likes: likeCount,
             tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
             author: author ? {
@@ -391,7 +429,7 @@ export default function App() {
               avatar: null,
               year: 'Unknown'
             },
-            stats: { views: 0, downloads: 0, likes: likeCount },
+            stats: { views: Number((p as any).views) || 0, downloads: Number((p as any).downloads) || 0, likes: likeCount },
             media: { all: [], images: [], videos: [], downloads: [] },
             members: membersByProject[p.id] || []
           };
@@ -612,15 +650,15 @@ export default function App() {
           title: p.title,
           description: p.description,
           long_description: p.long_description || '',
-          category: p.category || 'Uncategorized',
+          category: p.category || 'Others',
           featured: false,
           created_at: p.created_at,
           updated_at: p.updated_at,
           status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
           author_id: p.owner_id,
           cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
-          views: 0,
-          downloads: 0,
+          views: Number((p as any).views) || 0,
+          downloads: Number((p as any).downloads) || 0,
           likes: likeCount,
           tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
           author: author ? {
@@ -634,7 +672,7 @@ export default function App() {
             avatar: null,
             year: 'Unknown'
           },
-          stats: { views: 0, downloads: 0, likes: likeCount },
+          stats: { views: Number((p as any).views) || 0, downloads: Number((p as any).downloads) || 0, likes: likeCount },
           media: { all: [], images: [], videos: [], downloads: [] },
           members: membersByProject[p.id] || []
         };
@@ -687,6 +725,7 @@ export default function App() {
                   }}
                   onDeleteProject={handleDeleteProject}
                   onProjectUpdate={loadData}
+                  onReady={(pid) => incrementProjectView(pid)}
                   />
               } />
               <Route path="/projects/:projectId/edit" element={
@@ -823,15 +862,6 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
 
 
 

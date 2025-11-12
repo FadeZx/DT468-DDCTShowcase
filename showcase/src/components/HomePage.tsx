@@ -22,13 +22,13 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
   const recentProjects = projects.slice(0, 8);
 
   const formatCategoryId = (category: string) =>
-    (category || 'Uncategorized').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    (category || 'Others').toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
   const categoryMap = new Map<string, { id: string; name: string; count: number }>();
   categoryMap.set('all', { id: 'all', name: 'All Projects', count: projects.length });
 
   projects.forEach(project => {
-    const name = project.category || 'Uncategorized';
+    const name = project.category || 'Others';
     const id = formatCategoryId(name);
     const existing = categoryMap.get(id);
     if (existing) {

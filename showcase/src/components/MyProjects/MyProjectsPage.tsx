@@ -197,7 +197,7 @@ export default function MyProjectsPage({
                     <div className="flex items-center gap-4">
                       <span className="flex items-center gap-1">
                         <Eye className="w-4 h-4" />
-                        {project.views || 0}
+                        {project.stats?.views || 0}
                       </span>
                       <span className="flex items-center gap-1">
                         <Download className="w-4 h-4" />
@@ -270,7 +270,7 @@ export default function MyProjectsPage({
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-purple-600">
-                  {userProjects.reduce((sum, p) => sum + (p.views || 0), 0)}
+                  {userProjects.reduce((sum, p) => sum + (p.stats?.views || 0), 0)}
                 </div>
                 <div className="text-sm text-gray-600">Total Views</div>
               </CardContent>

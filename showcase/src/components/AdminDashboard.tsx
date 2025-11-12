@@ -11,6 +11,8 @@ import {
   Users, BookOpen, Award, TrendingUp, Download, 
   Calendar, Filter, FileText, Settings, MessageSquare, Image as ImageIcon, Video as VideoIcon 
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { SupabaseImage } from './figma/SupabaseImage';
 import supabase from '../utils/supabase/client';
 import { cleanupOrphanedProjectStorage } from '../utils/fileStorage';
 
@@ -20,6 +22,7 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ projects, users }: AdminDashboardProps) {
+  const navigate = useNavigate();
   const [selectedYear, setSelectedYear] = useState('2024');
   const [exportFormat, setExportFormat] = useState<'csv' | 'json' | 'pdf'>('csv');
   const [cleaning, setCleaning] = useState(false);
@@ -63,7 +66,7 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
     const colorPalette = ['#ff6b35', '#4ade80', '#60a5fa', '#f59e0b', '#ec4899', '#a78bfa', '#34d399', '#f472b6', '#f87171', '#22d3ee'];
     const map = new Map<string, number>();
     for (const p of filtered) {
-      const key = (p.category || 'Uncategorized').trim() || 'Uncategorized';
+      const key = (p.category || 'Others').trim() || 'Others';
       map.set(key, (map.get(key) || 0) + 1);
     }
     const entries = Array.from(map.entries()).sort((a,b) => b[1]-a[1]);
@@ -157,7 +160,7 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
     return [...projects]
       .sort((a: any, b: any) => (b.stats?.likes || 0) - (a.stats?.likes || 0))
       .slice(0, 5)
-      .map((p: any) => ({ id: p.id, title: p.title, likes: p.stats?.likes || 0, category: p.category || 'Uncategorized' }));
+      .map((p: any) => ({ id: p.id, title: p.title, likes: p.stats?.likes || 0, category: p.category || 'Others' }));
   }, [projects]);
 
   function toCSV(rows: any[]): string {
@@ -816,15 +819,23 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
               <div className="space-y-4">
                 {recentProjects.map((project) => (
                   <div key={project.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <img 
-                        src="/placeholder-project.svg" 
-                        alt={project.title}
-                        className="w-16 h-16 rounded object-cover"
-                      />
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/projects/${project.id}`)}
+                      className="flex items-center gap-2 text-left hover:opacity-90 focus:outline-none p-0 m-0 bg-transparent"
+                      aria-label={`View ${project.title}`}
+                    >
+                      <div className="w-16 h-16 rounded overflow-hidden bg-muted flex items-center justify-center shrink-0">
+                        <SupabaseImage
+                          src={project.cover_image || project.thumbnail || ''}
+                          alt={project.title}
+                          className="w-16 h-16 object-cover"
+                          fallbackSrc="/placeholder-project.svg"
+                        />
+                      </div>
                       <div>
-                        <h4 className="font-semibold">{project.title}</h4>
-                        <p className="text-sm text-muted-foreground">
+                        <h4 className="font-semibold line-clamp-1 m-0 leading-tight">{project.title}</h4>
+                        <p className="text-sm text-muted-foreground line-clamp-1">
                           by {project.author.name} • {project.category}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
@@ -834,20 +845,13 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </button>
                     
-                    <div className="flex items-center gap-2">
-                      <div className="text-right text-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-sm min-w-[120px]">
                         <div>{project.stats.views} views</div>
+                        <div>{project.stats.downloads ?? 0} downloads</div>
                         <div className="text-muted-foreground">{project.stats.likes} likes</div>
-                      </div>
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="sm">
-                          Edit
-                        </Button>
-                        <Button variant="destructive" size="sm">
-                          Delete
-                        </Button>
                       </div>
                     </div>
                   </div>
