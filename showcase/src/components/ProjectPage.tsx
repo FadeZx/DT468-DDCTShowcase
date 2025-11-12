@@ -163,7 +163,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
       const external = path.startsWith('external:') ? path.replace(/^external:/, '') : '';
       const storage = path.startsWith('projects/') ? path : '';
       const direct = file.file_url || external || storage;
-      const url = direct || '';
+      let url = direct || '';
 
       const ensureYoutubeThumb = (u: string): string => {
         try {
@@ -186,6 +186,23 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
       // Always provide a visible fallback for thumbnails when none can be derived
       const safeThumb = thumb && thumb.trim().length > 0 ? thumb : '/placeholder-project.svg';
 
+      // Normalize common providers to embed player URLs to avoid X-Frame-Options issues
+      if (file.file_type === 'video') {
+        try {
+          const u = String(url || '');
+          // YouTube variants
+          let m = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+          if (m && m[1]) {
+            url = `https://www.youtube.com/embed/${m[1]}?rel=0`;
+          } else {
+            // Vimeo basic: vimeo.com/<id>
+            const vm = u.match(/vimeo\.com\/(\d+)/);
+            if (vm && vm[1]) {
+              url = `https://player.vimeo.com/video/${vm[1]}`;
+            }
+          }
+        } catch {}
+      }
       return { type: file.file_type as 'image' | 'video', url, name: file.file_name, thumb: safeThumb };
     }).filter(m => !!m.url)
   );
@@ -263,8 +280,8 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             <Badge className="bg-primary text-primary-foreground">
               {project.category}
             </Badge>
-            {project.status === 'published' && (
-              <Badge variant="outline">Published</Badge>
+            {project.visibility === 'public' && (
+              <Badge variant="outline">Public</Badge>
             )}
           </div>
           <p className="text-muted-foreground select-text">{project.description}</p>
@@ -545,13 +562,14 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <h4 className="font-semibold mb-1">Status</h4>
+                      <h4 className="font-semibold mb-1">Visibility</h4>
                       <Badge className={
-                        project.status === 'published' ? 'bg-green-100 text-green-800' :
-                        project.status === 'draft' ? 'bg-gray-100 text-gray-800' :
-                        'bg-yellow-100 text-yellow-800'
+                        project.visibility === 'public' ? 'bg-green-100 text-green-800' :
+                        project.visibility === 'draft' ? 'bg-gray-100 text-gray-800' :
+                        project.visibility === 'unlisted' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-purple-100 text-purple-800'
                       }>
-                        {project.status}
+                        {project.visibility}
                       </Badge>
                     </div>
                     <div>
@@ -774,4 +792,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     </div>
   );
 }
+
+
 

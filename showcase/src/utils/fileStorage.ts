@@ -3,7 +3,7 @@ import supabase from './supabase/client';
 
 export interface FileUploadOptions {
   projectId: string;
-  fileType: 'image' | 'document' | 'project' | 'thumbnail' | 'export';
+  fileType: 'image' | 'video' | 'document' | 'project' | 'thumbnail' | 'export';
   file: File;
   generateThumbnail?: boolean;
 }
@@ -28,6 +28,8 @@ export function generateFilePath(
   switch (fileType) {
     case 'image':
       return `projects/${projectId}/images/originals/${fileId}.${extension}`;
+    case 'video':
+      return `projects/${projectId}/videos/${fileId}.${extension}`;
     case 'thumbnail':
       return `projects/${projectId}/images/thumbs/${fileId}_320.${extension}`;
     case 'document':

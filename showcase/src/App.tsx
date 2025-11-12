@@ -10,12 +10,15 @@ import UploadProjectPage from './components/UploadProject/UploadProjectPage';
 import MyProjectsPage from './components/MyProjects/MyProjectsPage';
 import { AccountSettings } from './components/Profile/AccountSettings';
 import { Toaster } from './components/ui/sonner';
+import { Input } from './components/ui/input';
+import { Search } from 'lucide-react';
 import { EventsPage } from './components/EventsPage';
 import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
 import supabase from './utils/supabase/client';
 import { getProjectLikeCounts } from './utils/projectLikes';
 import { listProjectStorage } from './utils/fileStorage';
+import { ProjectCard } from './components/ProjectCard';
 
 
 // Wrapper component for ProjectPage to handle dynamic project lookup and page-loading ready callback
@@ -69,6 +72,132 @@ function ProjectEditorWrapper({ currentUser, onProjectUpdated, allProjects }: {
       onProjectUpdated={onProjectUpdated}
       initialProject={initialProject}
     />
+  );
+}
+
+function BrowseAll({ projects, onProjectClick }: { projects: any[]; onProjectClick: (id: string) => void }) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const normalizeTags = (p: any): string[] => {
+    const t = p?.tags;
+    if (Array.isArray(t)) return t.map((s: any) => String(s || '').trim().toLowerCase()).filter(Boolean);
+    if (typeof t === 'string') return t.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    return [];
+  };
+
+  const q = searchTerm.trim().toLowerCase();
+  const filtered = q
+    ? projects.filter((p: any) => {
+        const contains = (s?: string) => (s || '').toLowerCase().includes(q);
+        if (contains(p.title) || contains(p.description) || contains(p.category)) return true;
+        if (contains(p.author?.name)) return true;
+        if (normalizeTags(p).some(t => t.includes(q))) return true;
+        if ((p.members || []).some((m: any) => contains(m?.name))) return true;
+        return false;
+      })
+    : projects;
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
+        <h1 className="text-3xl font-bold flex-1">Browse All Projects</h1>
+        <div className="relative w-full sm:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by title, tag, author..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+            aria-label="Search projects"
+          />
+        </div>
+      </div>
+      {filtered.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filtered.map((project: any) => (
+            <div 
+              key={project.id} 
+              onClick={() => onProjectClick(project.id)}
+              className="cursor-pointer"
+            >
+              <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
+                <img 
+                  src={project.thumbnail || '/placeholder-project.svg'} 
+                  alt={project.title}
+                  className="w-full h-48 object-cover"
+                />
+                <div className="p-4">
+                  <h3 className="font-semibold mb-2">{project.title}</h3>
+                  <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                      {project.category}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {project.author?.name}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No projects match your search.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchResults({ projects, onProjectClick }: { projects: any[]; onProjectClick: (id: string) => void }) {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const qRaw = params.get('q') || '';
+  const q = qRaw.trim().toLowerCase();
+
+  const normalizeTags = (p: any): string[] => {
+    const t = p?.tags;
+    if (Array.isArray(t)) return t.map((s: any) => String(s || '').trim().toLowerCase()).filter(Boolean);
+    if (typeof t === 'string') return t.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    return [];
+  };
+
+  const contains = (s?: string) => (s || '').toLowerCase().includes(q);
+
+  const filtered = !q
+    ? []
+    : projects.filter((p: any) =>
+        contains(p.title) ||
+        contains(p.description) ||
+        contains(p.category) ||
+        contains(p.author?.name) ||
+        normalizeTags(p).some(t => t.includes(q)) ||
+        (p.members || []).some((m: any) => contains(m?.name))
+      );
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="flex items-end justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Search Results</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {q ? `for "${qRaw}" — ${filtered.length} result${filtered.length === 1 ? '' : 's'}` : 'Enter a query in the header search.'}
+          </p>
+        </div>
+      </div>
+
+      {q && filtered.length > 0 ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-3">
+          {filtered.map((project: any) => (
+            <ProjectCard key={project.id} project={project} onClick={onProjectClick} />
+          ))}
+        </div>
+      ) : q ? (
+        <div className="text-center py-16 text-muted-foreground">No projects match your search.</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -165,7 +294,7 @@ export default function App() {
         const { data: rows, error } = await supabase
           .from('projects')
           .select('*')
-          .eq('status', 'published')
+          .eq('visibility', 'public')
           .order('created_at', { ascending: false });
         if (error) throw error;
         const ownerIds = Array.from(new Set((rows || []).map(r => r.owner_id).filter(Boolean)));
@@ -244,7 +373,7 @@ export default function App() {
             featured: false,
             created_at: p.created_at,
             updated_at: p.updated_at,
-            status: p.status || 'published',
+            status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
             author_id: p.owner_id,
             cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
             views: 0,
@@ -408,7 +537,7 @@ export default function App() {
       const { data: rows, error } = await supabase
         .from('projects')
         .select('*')
-        .eq('status', 'published')
+        .eq('visibility', 'public')
         .order('created_at', { ascending: false });
       if (error) throw error;
       
@@ -487,7 +616,7 @@ export default function App() {
           featured: false,
           created_at: p.created_at,
           updated_at: p.updated_at,
-          status: p.status || 'published',
+          status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
           author_id: p.owner_id,
           cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
           views: 0,
@@ -662,44 +791,7 @@ export default function App() {
               } />
               
               <Route path="/browse" element={
-                <div className="max-w-7xl mx-auto px-6 py-8">
-                  <h1 className="text-3xl font-bold mb-8">Browse All Projects</h1>
-                  {projects.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {projects.map((project) => (
-                        <div 
-                          key={project.id} 
-                          onClick={() => handleProjectClick(project.id)}
-                          className="cursor-pointer"
-                        >
-                          <div className="bg-card rounded-lg border overflow-hidden hover:shadow-lg transition-shadow">
-                            <img 
-                              src={project.thumbnail || '/placeholder-project.svg'} 
-                              alt={project.title}
-                              className="w-full h-48 object-cover"
-                            />
-                            <div className="p-4">
-                              <h3 className="font-semibold mb-2">{project.title}</h3>
-                              <p className="text-sm text-muted-foreground mb-2">{project.description}</p>
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                                  {project.category}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {project.author?.name}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <p className="text-muted-foreground">No projects available yet.</p>
-                    </div>
-                  )}
-                </div>
+                <BrowseAll projects={projects} onProjectClick={handleProjectClick} />
               } />
               
               <Route path="/events" element={
@@ -719,6 +811,9 @@ export default function App() {
                   </div>
                 )
               } />
+              <Route path="/search" element={
+                <SearchResults projects={projects} onProjectClick={handleProjectClick} />
+              } />
             </Routes>
           </>
         )}
@@ -728,6 +823,8 @@ export default function App() {
     </div>
   );
 }
+
+
 
 
 

@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
-import { Plus, X, Users, Crown, Hash } from 'lucide-react';
+import { Plus, X, Users, Crown, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star } from 'lucide-react';
 import { TagPicker } from '../TagPicker';
+import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 
 interface UploadProjectPageProps {
   currentUser?: any;
@@ -37,10 +39,36 @@ export default function UploadProjectPage({
 
   const [tags, setTags] = useState<string[]>([]);
   const [allTagSuggestions, setAllTagSuggestions] = useState<string[]>([]);
+  // New-upload mode state
+  const [newProjectId, setNewProjectId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [shortDescription, setShortDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [visibility, setVisibility] = useState<'draft' | 'private' | 'unlisted' | 'public'>('draft');
+  const [descriptionHtml, setDescriptionHtml] = useState('');
+  const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
+  const [files, setFiles] = useState<Array<any>>([]);
+  const descRef = useRef<HTMLTextAreaElement | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const projectInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingMedia, setPendingMedia] = useState<Array<{ id: string; file: File; type: 'image'|'video'; isCover?: boolean }>>([]);
+  const [pendingDocs, setPendingDocs] = useState<Array<{ id: string; file: File; type: 'project'|'document' }>>([]);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [pendingVideoUrls, setPendingVideoUrls] = useState<Array<{ id: string; url: string }>>([]);
+  // Removed global make-cover toggle; cover is chosen per-image in previews
+
   useEffect(() => {
+    // Always load tag suggestions; only load collaborators for edit mode
+    loadAllTags();
     if (editProjectId) {
       loadMembers();
-      loadOwner(); loadProjectTags(); loadAllTags();
+      loadOwner();
+      loadProjectTags();
+      // load existing files for edit mode display if needed later
+      (async () => {
+        const { data } = await supabase.from('project_files').select('*').eq('project_id', editProjectId).order('created_at', { ascending: false });
+        setFiles(data || []);
+      })();
     }
   }, [editProjectId]);
 
@@ -79,7 +107,8 @@ export default function UploadProjectPage({
     }
   };
 
-
+
+
   const loadProjectTags = async () => {
     try {
       const { data: proj } = await supabase.from("projects").select("tags").eq("id", editProjectId).single();
@@ -99,6 +128,202 @@ export default function UploadProjectPage({
       });
       setAllTagSuggestions(Array.from(set).filter(Boolean).sort());
     } catch (e) {}
+  };
+
+  // Helpers for new upload mode
+  const ensureProject = async (): Promise<string> => {
+    if (editProjectId) return editProjectId;
+    if (newProjectId) return newProjectId;
+    if (!currentUser?.id) throw new Error('Please sign in to create a project.');
+    const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const payload: any = {
+      id,
+      title: title?.trim() || 'Untitled Project',
+      owner_id: currentUser.id,
+      author_id: currentUser.id,
+      visibility: 'draft',
+      category: category || null,
+      description: shortDescription || null,
+      long_description: null,
+      description_html: descriptionHtml || null,
+      tags: tags || []
+    };
+    const { error } = await supabase.from('projects').insert([payload]);
+    if (error) throw error;
+    setNewProjectId(id);
+    return id;
+  };
+
+  const refreshFiles = async (pid: string) => {
+    const { data } = await supabase
+      .from('project_files')
+      .select('*')
+      .eq('project_id', pid)
+      .order('created_at', { ascending: false });
+    setFiles(data || []);
+  };
+
+  const chooseFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const items = Array.from(fileList);
+    setPendingMedia(prev => {
+      const next = [...prev];
+      for (const f of items) {
+        const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const isImage = (f.type || '').startsWith('image/');
+        const isVideo = (f.type || '').startsWith('video/');
+        if (isImage || isVideo) next.push({ id, file: f, type: isImage ? 'image' : 'video', isCover: false });
+      }
+      return next;
+    });
+    setPendingDocs(prev => {
+      const next = [...prev];
+      for (const f of items) {
+        const isImage = (f.type || '').startsWith('image/');
+        const isVideo = (f.type || '').startsWith('video/');
+        if (isImage || isVideo) continue;
+        const extMatch = (f.name || '').toLowerCase().match(/\.(zip|rar|7z|exe|app|dmg|tar|gz)$/);
+        const type = extMatch ? 'project' : 'document';
+        const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        next.push({ id, file: f, type });
+      }
+      return next;
+    });
+  };
+
+  async function uploadPending(pid: string) {
+    let coverChosenPath: string | null = null;
+    const hasExistingCover = (files || []).some(f => f.is_cover && f.file_type === 'image');
+    const anyMarkedCover = pendingMedia.some(m => m.type === 'image' && m.isCover);
+    if (anyMarkedCover) {
+      await supabase.from('project_files').update({ is_cover: false }).eq('project_id', pid).eq('file_type', 'image');
+    }
+    for (let i = 0; i < pendingMedia.length; i++) {
+      const m = pendingMedia[i];
+      const isImage = m.type === 'image';
+      const res = await uploadProjectFile({ projectId: pid, fileType: m.type, file: m.file, generateThumbnail: isImage });
+      const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const setAsCover = isImage && ((m.isCover === true) || (!hasExistingCover && !coverChosenPath && i === 0));
+      const row: any = {
+        id: rowId,
+        project_id: pid,
+        file_name: m.file.name,
+        file_url: res.fileUrl,
+        file_path: res.filePath,
+        file_type: m.type,
+        file_size: m.file.size,
+        mime_type: m.file.type,
+        is_cover: setAsCover
+      };
+      await supabase.from('project_files').insert([row]);
+      if (row.is_cover) coverChosenPath = row.file_path;
+    }
+    if (coverChosenPath) await supabase.from('projects').update({ cover_image: coverChosenPath }).eq('id', pid);
+    // Insert video URLs
+    for (const v of pendingVideoUrls) {
+      const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const row: any = {
+        id: rowId,
+        project_id: pid,
+        file_name: v.url,
+        file_url: v.url,
+        file_path: null,
+        file_type: 'video',
+        file_size: 0,
+        mime_type: 'text/url',
+        is_cover: false
+      };
+      await supabase.from('project_files').insert([row]);
+    }
+    setPendingVideoUrls([]);
+    for (const d of pendingDocs) {
+      const res = await uploadProjectFile({ projectId: pid, fileType: d.type, file: d.file, generateThumbnail: false });
+      const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const row: any = {
+        id: rowId,
+        project_id: pid,
+        file_name: d.file.name,
+        file_url: res.fileUrl,
+        file_path: res.filePath,
+        file_type: d.type,
+        file_size: d.file.size,
+        mime_type: d.file.type,
+        is_cover: false
+      };
+      await supabase.from('project_files').insert([row]);
+    }
+    setPendingMedia([]);
+    setPendingDocs([]);
+    await refreshFiles(pid);
+  }
+
+  const handleSetCover = async (fileId: string) => {
+    const pid = editProjectId || newProjectId;
+    if (!pid) return;
+    try {
+      const selected = files.find(f => f.id === fileId);
+      if (!selected) return;
+      await supabase.from('project_files').update({ is_cover: false }).eq('project_id', pid).eq('file_type', 'image');
+      await supabase.from('project_files').update({ is_cover: true }).eq('id', fileId);
+      await supabase.from('projects').update({ cover_image: selected.file_path }).eq('id', pid);
+      await refreshFiles(pid);
+    } catch {
+      alert('Failed to set cover');
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    const pid = editProjectId || newProjectId;
+    if (!pid) return;
+    const f = files.find(x => x.id === fileId);
+    if (!f) return;
+    try {
+      await deleteProjectFile(f.file_path);
+      await supabase.from('project_files').delete().eq('id', fileId);
+      await refreshFiles(pid);
+    } catch {
+      alert('Failed to delete file');
+    }
+  };
+
+  const wrapSelection = (prefix: string, suffix: string) => {
+    const el = descRef.current;
+    if (!el) return;
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const before = descriptionHtml.slice(0, start);
+    const selected = descriptionHtml.slice(start, end);
+    const after = descriptionHtml.slice(end);
+    const next = `${before}${prefix}${selected}${suffix}${after}`;
+    setDescriptionHtml(next);
+    requestAnimationFrame(() => {
+      try { el.selectionStart = start + prefix.length; el.selectionEnd = end + prefix.length; el.focus(); } catch {}
+    });
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      const pid = await ensureProject();
+      // Upload any staged files first
+      await uploadPending(pid);
+      const payload: any = {
+        title: title?.trim() || 'Untitled Project',
+        description: shortDescription || null,
+        category: category || null,
+        visibility,
+        description_html: descriptionHtml || null,
+        tags: tags || []
+      };
+      await supabase.from('projects').update(payload).eq('id', pid);
+      await supabase.from('project_collaborators').upsert({ project_id: pid, user_id: currentUser?.id, job_role: ownerJobRole || null, role: 'owner', invited_by: currentUser?.id }, { onConflict: 'project_id,user_id' });
+      if (members.length > 0) {
+        const rows = members.filter(m => m.id !== currentUser?.id).map(m => ({ project_id: pid, user_id: m.id, job_role: m.role || null, role: 'member', invited_by: currentUser?.id }));
+        if (rows.length) await supabase.from('project_collaborators').insert(rows);
+      }
+      alert('Draft saved');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save');
+    }
   };
 
   const loadOwner = async () => {
@@ -245,6 +470,285 @@ export default function UploadProjectPage({
     }
   };
 
+  // New upload page UI (no projectId)
+  if (!editProjectId) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create a New Project</h1>
+            <p className="text-gray-600">Uploads and details â€” one page, like itch.io.</p>
+          </div>
+
+          {/* Details */}
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-4">
+              <h2 className="text-xl font-semibold">Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Title <span className="text-red-500">*</span></label>
+                  <Input required aria-invalid={title.trim().length === 0} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Project title" />
+                  {title.trim().length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Title is required</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Category</label>
+                  <select className="w-full border rounded-md h-9 px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
+                    <option value="">Select category</option>
+                    <option value="Art">Art</option>
+                    <option value="Animation">Animation</option>
+                    <option value="Game">Game</option>
+                    <option value="Simulation">Simulation</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Visibility</label>
+                  <select className="w-full border rounded-md h-9 px-2 bg-background" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
+                    <option value="draft">Draft</option>
+                    <option value="private">Private</option>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="public">Public</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Short description</label>
+                <Textarea rows={3} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="One-liner shown in cards" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Uploads (separated) */}
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-6">
+              {/* Media */}
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Media (images/videos)</h2>
+                  <div className="flex items-center gap-3">
+                    <input ref={mediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => chooseFiles(e.target.files)} />
+                    <Button type="button" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload media'}</Button>
+                    <div className="flex gap-2">
+                      <Input placeholder="Paste video URL (YouTube, etc.)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+                      <Button type="button" onClick={() => {
+                        const url = (videoUrl || '').trim();
+                        if (!/^https?:\/\//i.test(url)) { alert('Enter a valid http(s) URL'); return; }
+                        setPendingVideoUrls(prev => [...prev, { id: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`), url }]);
+                        setVideoUrl('');
+                      }}>Add URL</Button>
+                    </div>
+                  </div>
+                </div>
+                {pendingVideoUrls.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {pendingVideoUrls.map(v => (
+                      <div key={v.id} className="border rounded p-2 bg-background">
+                        <div className="flex items-center justify-between gap-2">
+                          <a href={v.url} target="_blank" className="truncate text-primary underline text-xs">{v.url}</a>
+                          <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingVideoUrls(prev => prev.filter(x => x.id !== v.id))}><X className="w-4 h-4" /></Button>
+                        </div>
+                        <div className="mt-2">
+                          {(() => {
+                            const u = String(v.url || "");
+                            let embed = u;
+                            const m = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+                            if (m && m[1]) embed = `https://www.youtube.com/embed/${m[1]}?rel=0`;
+                            const vm = u.match(/vimeo\.com\/(\d+)/);
+                            if (!m && vm && vm[1]) embed = `https://player.vimeo.com/video/${vm[1]}`;
+                            return (
+                              <div className="aspect-video w-full">
+                                <iframe src={embed} className="w-full h-full rounded" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Video preview" />
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mb-3">First uploaded image becomes the cover. You can change it below.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {pendingMedia.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    {pendingMedia.map(m => (
+                      <div key={m.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                        <div className="w-12 h-12 flex items-center justify-center rounded bg-muted overflow-hidden">
+                          {m.type === 'image' ? (
+                            <img src={URL.createObjectURL(m.file)} alt="preview" className="w-12 h-12 object-cover" />
+                          ) : (
+                            <FileText className="w-5 h-5" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-sm font-medium">{m.file.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{m.file.type} · {m.file.size.toLocaleString()} bytes</div>
+                          {m.type === 'image' && (
+                            <label className="inline-flex items-center gap-2 text-xs mt-1">
+                              <input type="checkbox" checked={!!m.isCover} onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPendingMedia(prev => prev.map(x => x.id === m.id ? { ...x, isCover: checked } : { ...x, isCover: checked ? false : x.isCover }));
+                              }} />
+                              Make cover
+                            </label>
+                          )}
+                        </div>
+                        <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                  {(files.filter(f => f.file_type === 'image' || f.file_type === 'video')).map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                        {f.file_type === 'image' ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-sm font-medium">{f.file_name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{f.mime_type} Â· {(f.file_size || 0).toLocaleString()} bytes</div>
+                      </div>
+                      {f.file_type === 'image' && (
+                        <Button size="sm" variant={f.is_cover ? 'default' : 'outline'} onClick={() => handleSetCover(f.id)} className="mr-2">
+                          <Star className="w-3 h-3 mr-1" /> {f.is_cover ? 'Cover' : 'Set cover'}
+                        </Button>
+                      )}
+                      <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                  {(files.filter(f => f.file_type === 'image' || f.file_type === 'video')).length === 0 && (
+                    <div className="text-sm text-muted-foreground">No media uploaded yet.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Project files */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Project Files</h2>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={projectInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => chooseFiles(e.target.files)}
+                      accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+                    />
+                    <Button type="button" disabled={uploadingFiles} onClick={() => projectInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload files'}</Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {pendingDocs.map(d => (
+                    <div key={d.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-sm font-medium">{d.file.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{d.file.type} · {d.file.size.toLocaleString()} bytes</div>
+                      </div>
+                      <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                  {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).map((f) => (
+                    <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-sm font-medium">{f.file_name}</div>
+                        <div className="text-xs text-muted-foreground truncate">{f.mime_type} Â· {(f.file_size || 0).toLocaleString()} bytes</div>
+                      </div>
+                      <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                  {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).length === 0 && (
+                    <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Description */}
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Description</h2>
+                <div className="flex items-center gap-1">
+                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<b>', '</b>')}><Bold className="w-3 h-3" /></Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<i>', '</i>')}><Italic className="w-3 h-3" /></Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<ul>\n<li>', '</li>\n</ul>')}><List className="w-3 h-3" /></Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<a href=\"\">', '</a>')}><LinkIcon className="w-3 h-3" /></Button>
+                </div>
+              </div>
+              <Textarea ref={descRef} rows={10} value={descriptionHtml} onChange={(e) => setDescriptionHtml(e.target.value)} placeholder="Write your project page content (HTML allowed)" />
+              <p className="text-xs text-muted-foreground">Tip: Basic HTML supported. Use buttons for quick formatting.</p>
+            </CardContent>
+          </Card>
+
+          {/* Tags */}
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <Hash className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-semibold">Tags</h3>
+              </div>
+              <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
+            </CardContent>
+          </Card>
+
+          {/* Team */}
+          <Card className="mb-6">
+            <CardContent className="pt-6 space-y-4">
+              <h3 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" /> Team</h3>
+              <div>
+                <label className="block text-sm font-medium mb-2">Add Member by Email</label>
+                <div className="flex gap-2">
+                  <Input placeholder="Enter email address" value={newMember} onChange={(e) => setNewMember(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addMember()} className="flex-1" />
+                  <Button onClick={addMember} size="default"><Plus className="w-4 h-4 mr-2" />Add</Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {members.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between p-2 border rounded-md">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="w-8 h-8">
+                        <AvatarImage src={member.avatar || undefined} />
+                        <AvatarFallback>{member.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-medium">{member.name}</div>
+                        <div className="text-xs text-muted-foreground">{member.email}</div>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => removeMember(member.id)} aria-label="Remove"><X className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+                {members.length === 0 && <div className="text-sm text-muted-foreground">No members yet.</div>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2">
+
+            <Button disabled={title.trim().length === 0} onClick={async () => {
+              try {
+                const pid = await ensureProject();
+                await uploadPending(pid);
+                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: category || null, description_html: descriptionHtml || null, tags }).eq('id', pid);
+                window.location.href = `/projects/${pid}`;
+              } catch (e: any) { alert(e?.message || 'Failed to save'); }
+            }}>Save</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
@@ -349,7 +853,7 @@ export default function UploadProjectPage({
                                 </div>
                               </div>
                             </div>
-                            {/* owner cannot be removed — no action shown */}
+                            {/* owner cannot be removed â€” no action shown */}
                           </div>
                         )}
                         {members.filter(member => member.id !== (owner?.id || '')).map(member => (
@@ -436,6 +940,13 @@ export default function UploadProjectPage({
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
 

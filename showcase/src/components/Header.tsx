@@ -45,15 +45,24 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
 
         {/* Search Bar */}
         <div className="flex-1 max-w-md mx-8">
-          <div className="relative">
+          <form
+            className="relative"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = searchQuery.trim();
+              if (q.length === 0) return;
+              navigate(`/search?q=${encodeURIComponent(q)}`);
+            }}
+          >
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search projects, students, or categories..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
+              aria-label="Search"
             />
-          </div>
+          </form>
         </div>
 
         {/* User Actions */}

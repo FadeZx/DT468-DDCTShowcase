@@ -36,21 +36,22 @@ export default function MyProjectsPage({
   onViewProject,
   onDeleteProject
 }: MyProjectsPageProps) {
-  const [filter, setFilter] = useState<'all' | 'published' | 'draft' | 'under-review'>('all');
+  const [filter, setFilter] = useState<'all' | 'public' | 'draft' | 'private' | 'unlisted'>('all');
   
   // Filter projects to show only current user's projects
   const userProjects = projects.filter(project => project.author_id === currentUser?.id);
 
   const filteredProjects = userProjects.filter(project => {
     if (filter === 'all') return true;
-    return project.status === filter;
+    return (project.visibility || 'draft') === filter;
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'published': return 'bg-green-100 text-green-800';
+  const getVisibilityColor = (v: string) => {
+    switch (v) {
+      case 'public': return 'bg-green-100 text-green-800';
       case 'draft': return 'bg-gray-100 text-gray-800';
-      case 'under-review': return 'bg-yellow-100 text-yellow-800';
+      case 'unlisted': return 'bg-yellow-100 text-yellow-800';
+      case 'private': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -84,9 +85,10 @@ export default function MyProjectsPage({
           <div className="flex gap-2">
             {[
               { key: 'all', label: 'All Projects', count: userProjects.length },
-              { key: 'published', label: 'Published', count: userProjects.filter(p => p.status === 'published').length },
-              { key: 'draft', label: 'Drafts', count: userProjects.filter(p => p.status === 'draft').length },
-              { key: 'under-review', label: 'Under Review', count: userProjects.filter(p => p.status === 'under-review').length }
+              { key: 'public', label: 'Public', count: userProjects.filter(p => p.visibility === 'public').length },
+              { key: 'draft', label: 'Drafts', count: userProjects.filter(p => p.visibility === 'draft').length },
+              { key: 'private', label: 'Private', count: userProjects.filter(p => p.visibility === 'private').length },
+              { key: 'unlisted', label: 'Unlisted', count: userProjects.filter(p => p.visibility === 'unlisted').length }
             ].map(({ key, label, count }) => (
               <Button
                 key={key}
@@ -139,8 +141,8 @@ export default function MyProjectsPage({
                         {project.title}
                       </CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge className={getStatusColor(project.status)}>
-                          {project.status.replace('-', ' ')}
+                        <Badge className={getVisibilityColor(project.visibility)}>
+                          {(project.visibility || '').replace('-', ' ')}
                         </Badge>
                         <Badge variant="outline">
                           {project.category}
@@ -210,7 +212,7 @@ export default function MyProjectsPage({
 
                   {/* Dates */}
                   <div className="text-xs text-gray-400 space-y-1">
-                    {project.status === 'published' && (
+                    {(project.visibility === 'public') && (
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         Published: {new Date(project.created_at).toLocaleDateString()}
@@ -260,7 +262,7 @@ export default function MyProjectsPage({
             <Card>
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {userProjects.filter(p => p.status === 'published').length}
+                  {userProjects.filter(p => p.visibility === 'public').length}
                 </div>
                 <div className="text-sm text-gray-600">Published</div>
               </CardContent>
@@ -287,3 +289,4 @@ export default function MyProjectsPage({
     </div>
   );
 }
+

@@ -52,16 +52,14 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
   projects.forEach((p) => normalizeTags(p).forEach((t) => allTagsSet.add(t)));
   const allTags = Array.from(allTagsSet).sort();
 
-  const filteredByCategory = selectedCategory === 'all'
-    ? projects
-    : projects.filter(p => formatCategoryId(p.category) === selectedCategory);
-
-  const filteredProjects = selectedTags.length === 0
-    ? filteredByCategory
-    : filteredByCategory.filter(p => {
-        const tags = normalizeTags(p);
-        return selectedTags.every(t => tags.includes(t));
-      });
+  const filteredProjects = (selectedTags.length === 0
+    ? (selectedCategory === 'all' ? projects : projects.filter(p => formatCategoryId(p.category) === selectedCategory))
+    : (selectedCategory === 'all' ? projects : projects.filter(p => formatCategoryId(p.category) === selectedCategory))
+        .filter(p => {
+          const tags = normalizeTags(p);
+          return selectedTags.every(t => tags.includes(t));
+        })
+  );
 
   const upcomingEvents = [
     {
@@ -158,8 +156,8 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
         {/* Projects Section */}
         <div className="md:col-span-4 order-2 md:order-1">
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-            <div className="flex items-center justify-center mb-6">
-              <h2 className="text-2xl font-semibold">Browse Projects</h2>
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-center sm:text-left">Browse Projects</h2>
             </div>
             
             <TabsList className="flex flex-wrap justify-center gap-2 w-full mb-6">
@@ -204,6 +202,9 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
                   />
                 ))}
               </div>
+              {filteredProjects.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground">No projects in this filter.</div>
+              )}
               
               {filteredProjects.length > 12 && (
                 <div className="text-center mt-8">
