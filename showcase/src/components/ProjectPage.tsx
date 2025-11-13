@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -13,10 +13,13 @@ import { Link } from 'react-router-dom';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
-import ReactPlayer from 'react-player';
 import { ProjectComments } from './ProjectComments';
-import { getDownloadUrl } from '../utils/fileStorage';
+import { getDownloadUrl, getBestFileUrl } from '../utils/fileStorage';
 import { useProjectLikes } from '../hooks/useProjectLikes';
+
+
+
+type GalleryMediaItem = { type: 'image' | 'video'; url: string; name?: string; thumb?: string };
 
 interface ProjectPageProps {
   project: any;
@@ -146,68 +149,118 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   );
 
   // Get media files from project files (images/videos)
-  const mediaFiles = projectFiles.filter(file => (file.file_type === 'image' || file.file_type === 'video') && ((file.file_path && (file.file_path.startsWith('projects/') || file.file_path.startsWith('external:'))) || !!file.file_url));
+  const mediaFiles = useMemo(
+    () => projectFiles.filter(file => (file.file_type === 'image' || file.file_type === 'video') && ((file.file_path && (file.file_path.startsWith('projects/') || file.file_path.startsWith('external:'))) || !!file.file_url)),
+    [projectFiles]
+  );
   // Sort: cover first, then by created_at asc
-  const mediaFilesSorted = [...mediaFiles].sort((a, b) => {
-    const ac = a.is_cover ? 1 : 0;
-    const bc = b.is_cover ? 1 : 0;
-    if (bc - ac !== 0) return bc - ac;
-    const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return at - bt;
-  });
+  const mediaFilesSorted = useMemo(() => {
+    const sorted = [...mediaFiles].sort((a, b) => {
+      const ac = a.is_cover ? 1 : 0;
+      const bc = b.is_cover ? 1 : 0;
+      if (bc - ac !== 0) return bc - ac;
+      const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return at - bt;
+    });
+    return sorted;
+  }, [mediaFiles]);
 
   // Build unified media list with thumbnail support for videos (YouTube etc.)
-  const galleryMedia: { type: 'image' | 'video'; url: string; name?: string; thumb?: string }[] = (
-    mediaFilesSorted.map((file) => {
-      const path = file.file_path || '';
-      const external = path.startsWith('external:') ? path.replace(/^external:/, '') : '';
-      const storage = path.startsWith('projects/') ? path : '';
-      const direct = file.file_url || external || storage;
-      let url = direct || '';
+  const baseGalleryMedia = useMemo<GalleryMediaItem[]>(() => {
+    return mediaFilesSorted
+      .map((file) => {
+        const path = file.file_path || '';
+        const external = path.startsWith('external:') ? path.replace(/^external:/, '') : '';
+        const storage = path.startsWith('projects/') ? path : '';
+        const direct = file.file_url || external || storage;
+        let url = direct || '';
 
-      const ensureYoutubeThumb = (u: string): string => {
-        try {
-          // Support watch?v=ID, youtu.be/ID, /embed/ID, /shorts/ID
-          const idMatch = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
-          const id = idMatch ? idMatch[1] : '';
-          return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
-        } catch {
-          return '';
-        }
-      };
-
-      let thumb = '';
-      if (file.file_type === 'image') {
-        thumb = url;
-      } else if (file.file_type === 'video') {
-        thumb = file.thumbnail_url || ensureYoutubeThumb(url) || '';
-      }
-
-      // Always provide a visible fallback for thumbnails when none can be derived
-      const safeThumb = thumb && thumb.trim().length > 0 ? thumb : '/placeholder-project.svg';
-
-      // Normalize common providers to embed player URLs to avoid X-Frame-Options issues
-      if (file.file_type === 'video') {
-        try {
-          const u = String(url || '');
-          // YouTube variants
-          let m = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
-          if (m && m[1]) {
-            url = `https://www.youtube.com/embed/${m[1]}?rel=0`;
-          } else {
-            // Vimeo basic: vimeo.com/<id>
-            const vm = u.match(/vimeo\.com\/(\d+)/);
-            if (vm && vm[1]) {
-              url = `https://player.vimeo.com/video/${vm[1]}`;
-            }
+        const ensureYoutubeThumb = (u: string): string => {
+          try {
+            // Support watch?v=ID, youtu.be/ID, /embed/ID, /shorts/ID
+            const idMatch = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+            const id = idMatch ? idMatch[1] : '';
+            return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
+          } catch {
+            return '';
           }
-        } catch {}
+        };
+
+        let thumb = '';
+        if (file.file_type === 'image') {
+          thumb = url;
+        } else if (file.file_type === 'video') {
+          thumb = file.thumbnail_url || ensureYoutubeThumb(url) || '';
+        }
+        const safeThumb = thumb && thumb.trim().length > 0 ? thumb : '/placeholder-project.svg';
+
+        if (file.file_type === 'video') {
+          try {
+            const u = String(url || '');
+            let m = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+            if (m && m[1]) {
+              url = `https://www.youtube.com/embed/${m[1]}?rel=0`;
+            } else {
+              const vm = u.match(/vimeo\.com\/(\d+)/);
+              if (vm && vm[1]) {
+                url = `https://player.vimeo.com/video/${vm[1]}`;
+              }
+            }
+          } catch {}
+        }
+        return { type: file.file_type as 'image' | 'video', url, name: file.file_name, thumb: safeThumb };
+      })
+      .filter((m): m is GalleryMediaItem => !!m.url);
+  }, [mediaFilesSorted]);
+
+  const [galleryMedia, setGalleryMedia] = useState<GalleryMediaItem[]>(baseGalleryMedia);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGalleryMedia(baseGalleryMedia);
+
+    const needsSignedUrl = baseGalleryMedia.some(
+      (item) => item.url?.startsWith('projects/') || item.thumb?.startsWith('projects/')
+    );
+    if (!needsSignedUrl) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const resolveMediaUrls = async () => {
+      const resolved = await Promise.all(
+        baseGalleryMedia.map(async (item) => {
+          let nextUrl = item.url;
+          let nextThumb = item.thumb;
+          try {
+            if (nextUrl?.startsWith('projects/')) {
+              nextUrl = await getBestFileUrl(nextUrl, 3600);
+            }
+            if (nextThumb?.startsWith('projects/')) {
+              nextThumb = await getBestFileUrl(nextThumb, 3600);
+            }
+          } catch (error) {
+            console.warn('[ProjectPage] Failed to resolve media URL', { item }, error);
+          }
+          return { ...item, url: nextUrl, thumb: nextThumb };
+        })
+      );
+      if (!cancelled) {
+        setGalleryMedia(resolved);
       }
-      return { type: file.file_type as 'image' | 'video', url, name: file.file_name, thumb: safeThumb };
-    }).filter(m => !!m.url)
-  );
-  console.log('[ProjectPage] galleryMedia built:', { projectId: project.id, count: galleryMedia.length, galleryMedia, rawFilesCount: projectFiles.length, rawFiles: projectFiles });
+    };
+
+    resolveMediaUrls();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseGalleryMedia]);
+
+  console.log('[ProjectPage] galleryMedia built:', { projectId: project.id, count: baseGalleryMedia.length, galleryMedia: baseGalleryMedia, rawFilesCount: projectFiles.length, rawFiles: projectFiles });
+
 
   // Autoplay: images advance after delay; videos advance onEnded
   useEffect(() => {
@@ -340,20 +393,13 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
                     {galleryMedia.length > 0 ? (
                       galleryMedia[activeIndex]?.type === 'video' ? (
-                        <ReactPlayer
-                          url={galleryMedia[activeIndex].url}
-                          width="100%"
-                          height="100%"
-                          playing={true}
-                          muted={true}
-                          controls={true}
-                          playsinline
-                          onEnded={() => setActiveIndex((prev) => (galleryMedia.length ? (prev + 1) % galleryMedia.length : 0))}
-                          className="absolute inset-0"
-                          config={{
-                            youtube: { playerVars: { rel: 0, modestbranding: 1 } },
-                            vimeo: { playerOptions: { byline: 0, title: 0, portrait: 0 } }
-                          }}
+                        <iframe
+                          key={galleryMedia[activeIndex].url}
+                          src={galleryMedia[activeIndex].url}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          allowFullScreen
+                          className="absolute inset-0 w-full h-full"
+                          title={galleryMedia[activeIndex].name || project.title}
                         />
                       ) : (
                         <div className="absolute inset-0 w-full h-full flex items-center justify-center p-4">

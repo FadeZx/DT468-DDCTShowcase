@@ -298,26 +298,50 @@ export default function App() {
       }
       sessionStorage.setItem(key, String(Date.now()));
 
+      const optimisticIncrement = (next?: number) => {
+        setProjects(prev => prev.map(p => {
+          if (p.id !== projectId) return p;
+          const currentViews = next ?? (p.views || 0) + 1;
+          return {
+            ...p,
+            views: currentViews,
+            stats: { ...p.stats, views: currentViews }
+          };
+        }));
+      };
+
       // Optimistically update UI state
-      setProjects(prev => prev.map(p => p.id === projectId
-        ? { ...p, views: (p.views || 0) + 1, stats: { ...p.stats, views: (p.stats?.views || 0) + 1 } }
-        : p));
+      optimisticIncrement();
+
+      const persistWithRpc = async () => {
+        const { data, error } = await supabase
+          .rpc('increment_project_views', { p_project_id: projectId });
+        if (error) throw error;
+        if (typeof data === 'number' && Number.isFinite(data)) {
+          optimisticIncrement(data);
+        }
+      };
 
       // Try to persist to Supabase (best-effort)
       try {
-        const current = projects.find(p => p.id === projectId);
-        const nextViews = (current?.views || 0) + 1;
-        await supabase
-          .from('projects')
-          .update({ views: nextViews }, { returning: 'minimal' })
-          .eq('id', projectId);
-      } catch (e: any) {
-        // Common in RLS setups where UPDATE is blocked or 406 returned;
-        // UI already updated optimistically.
-        if (typeof e?.message === 'string' && e.message.includes('406')) {
-          console.warn('Persist skipped (406 Not Acceptable). Check RLS or use RPC.', e);
-        } else {
-          console.warn('Failed to persist view increment', e);
+        await persistWithRpc();
+      } catch (rpcError: any) {
+        try {
+          const current = projects.find(p => p.id === projectId);
+          const nextViews = (current?.views || 0) + 1;
+          const { error } = await supabase
+            .from('projects')
+            .update({ views: nextViews }, { returning: 'minimal' })
+            .eq('id', projectId);
+          if (error) throw error;
+        } catch (e: any) {
+          // Common in RLS setups where UPDATE is blocked or 406 returned;
+          // UI already updated optimistically.
+          if (typeof e?.message === 'string' && e.message.includes('406')) {
+            console.warn('Persist skipped (406 Not Acceptable). Check RLS or use RPC.', e);
+          } else {
+            console.warn('Failed to persist view increment', e, rpcError);
+          }
         }
       }
     } catch (e) {
