@@ -68,6 +68,11 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     onLikeChange: onProjectUpdate
   });
 
+  const fullDescriptionHtml = useMemo(() => {
+    const html = typeof project.full_description === 'string' ? project.full_description.trim() : '';
+    return html;
+  }, [project.full_description]);
+
 
   useEffect(() => {
     const providedAll = Array.isArray(project.media?.all) ? project.media.all : null;
@@ -509,7 +514,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="files">Files</TabsTrigger>
-              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="description">Description</TabsTrigger>
               <TabsTrigger value="comments">Comments</TabsTrigger>
             </TabsList>
 
@@ -520,7 +525,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground leading-relaxed">
-                    {project.long_description || project.description || 'No detailed description available for this project.'}
+                    {project.description || 'No short description available for this project.'}
                   </p>
                 </CardContent>
               </Card>
@@ -621,64 +626,22 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               )}
             </TabsContent>
 
-            <TabsContent value="details" className="mt-6">
+            <TabsContent value="description" className="mt-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Project Information</CardTitle>
+                  <CardTitle>Description</CardTitle>
+                  <p className="text-sm text-muted-foreground">Pulled directly from the project submission.</p>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="font-semibold mb-1">Visibility</h4>
-                      <Badge className={
-                        project.visibility === 'public' ? 'bg-green-100 text-green-800' :
-                        project.visibility === 'draft' ? 'bg-gray-100 text-gray-800' :
-                        project.visibility === 'unlisted' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-purple-100 text-purple-800'
-                      }>
-                        {project.visibility}
-                      </Badge>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-1">Category</h4>
-                      <p className="text-sm text-muted-foreground">{project.category}</p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-1">Created</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(project.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-1">Last Updated</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(project.updated_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {project.github_url && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Source Code</h4>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={project.github_url} target="_blank" rel="noopener noreferrer">
-                          <Github className="w-4 h-4 mr-2" />
-                          View on GitHub
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {project.demo_url && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Live Demo</h4>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={project.demo_url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          View Demo
-                        </a>
-                      </Button>
-                    </div>
+                <CardContent>
+                  {fullDescriptionHtml ? (
+                    <div
+                      className="text-sm leading-relaxed space-y-3 description-html"
+                      dangerouslySetInnerHTML={{ __html: fullDescriptionHtml }}
+                    />
+                  ) : (
+                    <p className="text-muted-foreground text-sm">
+                      No description has been provided for this project yet.
+                    </p>
                   )}
                 </CardContent>
               </Card>

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -61,6 +61,59 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   const orderMap = new Map(theme.projectOrder.map((id, idx) => [id, idx] as const));
   const orderedProjects = combinedProjects.slice().sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
   const visibleProjects = orderedProjects.filter(p => !theme.hiddenProjects.includes(p.id));
+
+  const [draftProjects, setDraftProjects] = useState<any[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!isOwnProfile) {
+      setDraftProjects([]);
+      return;
+    }
+    const loadDrafts = async () => {
+      setDraftsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('owner_id', user.id)
+          .eq('visibility', 'draft')
+          .order('updated_at', { ascending: false });
+        if (error) throw error;
+        const mapped = (data || []).map((row: any) => ({
+          id: row.id,
+          title: row.title || 'Untitled Project',
+          description: row.description || 'No description provided.',
+          category: row.category || 'Others',
+          cover_image: row.cover_image,
+          visibility: row.visibility,
+          author: {
+            name: user.name || user.email || 'You',
+            avatar: user.avatar || null,
+            year: user.year || 'Unknown'
+          },
+          stats: {
+            views: Number(row.views) || 0,
+            downloads: Number(row.downloads) || 0,
+            likes: Number(row.likes) || 0
+          },
+          tags: Array.isArray(row.tags) ? row.tags : [],
+          members: []
+        }));
+        if (active) setDraftProjects(mapped);
+      } catch (e) {
+        console.warn('Failed to load draft projects', e);
+        if (active) setDraftProjects([]);
+      } finally {
+        if (active) setDraftsLoading(false);
+      }
+    };
+    loadDrafts();
+    return () => {
+      active = false;
+    };
+  }, [isOwnProfile, user.id, user.name, user.email, user.avatar, user.year]);
 
   const handleSave = async () => {
     try {
@@ -501,8 +554,11 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
         {/* Main Content */}
         <div className="lg:col-span-2">
           <Tabs defaultValue="projects" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-1">
+            <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <TabsTrigger value="projects">Projects ({combinedProjects.length})</TabsTrigger>
+              {isOwnProfile && (
+                <TabsTrigger value="drafts">Drafts ({draftProjects.length})</TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="projects">
@@ -536,6 +592,48 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
               )}
             </TabsContent>
 
+            {isOwnProfile && (
+              <TabsContent value="drafts">
+                {draftsLoading ? (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">Loading your drafts...</p>
+                    </CardContent>
+                  </Card>
+                ) : draftProjects.length > 0 ? (
+                  <div className="grid gap-6" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(theme.layout.projectColumns, 1), 5)}, minmax(0, 1fr))` }}>
+                    {draftProjects.map((project) => (
+                      <ProjectCard
+                        key={project.id}
+                        project={project}
+                        onClick={(projectId) => {
+                          if (onNavigate) {
+                            onNavigate(`/upload?projectId=${projectId}`);
+                          } else {
+                            onProjectClick(projectId);
+                          }
+                        }}
+                        theme={theme}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <BookOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No Drafts Yet</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Draft projects you start but haven’t published will appear here.
+                      </p>
+                      <Button onClick={() => onNavigate?.('/upload')}>
+                        Continue a Project
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            )}
 
 
 

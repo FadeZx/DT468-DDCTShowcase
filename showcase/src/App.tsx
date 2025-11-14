@@ -430,7 +430,7 @@ export default function App() {
             id: p.id,
             title: p.title,
             description: p.description,
-            long_description: p.long_description || '',
+            full_description: p.full_description || '',
             category: p.category || 'Others',
             featured: false,
             created_at: p.created_at,
@@ -669,11 +669,11 @@ export default function App() {
       const supabaseProjects = (rows || []).map(p => {
         const author = owners.find(o => o.id === p.owner_id);
         const likeCount = likeCounts[p.id] || 0;
-        return {
+          return {
           id: p.id,
           title: p.title,
           description: p.description,
-          long_description: p.long_description || '',
+          full_description: p.full_description || '',
           category: p.category || 'Others',
           featured: false,
           created_at: p.created_at,

@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
-import { Plus, X, Users, Crown, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star } from 'lucide-react';
+import { Plus, X, Users, Crown, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star, MoveUp, MoveDown } from 'lucide-react';
 import { TagPicker } from '../TagPicker';
 import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 
@@ -24,6 +24,23 @@ interface Member {
   role: string;
   avatar?: string | null;
 }
+
+type FilePendingMediaItem = {
+  id: string;
+  kind: 'file';
+  file: File;
+  type: 'image' | 'video';
+  isCover?: boolean;
+};
+
+type UrlPendingMediaItem = {
+  id: string;
+  kind: 'url';
+  url: string;
+  type: 'video';
+};
+
+type PendingMediaItem = FilePendingMediaItem | UrlPendingMediaItem;
 
 export default function UploadProjectPage({
   currentUser,
@@ -46,17 +63,36 @@ export default function UploadProjectPage({
   const [category, setCategory] = useState('');
   const [customCategory, setCustomCategory] = useState('');
   const [visibility, setVisibility] = useState<'draft' | 'private' | 'unlisted' | 'public'>('draft');
-  const [descriptionHtml, setDescriptionHtml] = useState('');
+  const [fullDescription, setFullDescription] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
   const [files, setFiles] = useState<Array<any>>([]);
   const descRef = useRef<HTMLTextAreaElement | null>(null);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const projectInputRef = useRef<HTMLInputElement | null>(null);
-  const [pendingMedia, setPendingMedia] = useState<Array<{ id: string; file: File; type: 'image'|'video'; isCover?: boolean }>>([]);
+  const [pendingMedia, setPendingMedia] = useState<PendingMediaItem[]>([]);
   const [pendingDocs, setPendingDocs] = useState<Array<{ id: string; file: File; type: 'project'|'document' }>>([]);
   const [videoUrl, setVideoUrl] = useState('');
-  const [pendingVideoUrls, setPendingVideoUrls] = useState<Array<{ id: string; url: string }>>([]);
   // Removed global make-cover toggle; cover is chosen per-image in previews
+
+  const createTempId = () =>
+    globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const getVideoEmbedUrl = (rawUrl: string) => {
+    const url = String(rawUrl || '');
+    const youtubeMatch = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
+    if (youtubeMatch?.[1]) {
+      return `https://www.youtube.com/embed/${youtubeMatch[1]}?rel=0`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeoMatch?.[1]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+    }
+    return url;
+  };
+
+  const isFileMedia = (item: PendingMediaItem): item is FilePendingMediaItem => item.kind === 'file';
+  const VIDEO_PREVIEW_WIDTH = 200; // pixels
+  const FILE_PREVIEW_DIMENSIONS = { width: 200, height: 135 }; // pixels
 
   useEffect(() => {
     // Always load tag suggestions; only load collaborators for edit mode
@@ -146,8 +182,7 @@ export default function UploadProjectPage({
       visibility: 'draft',
       category: resolvedCategory,
       description: shortDescription || null,
-      long_description: null,
-      description_html: descriptionHtml || null,
+      full_description: fullDescription || null,
       tags: tags || []
     };
     const { error } = await supabase.from('projects').insert([payload]);
@@ -171,10 +206,10 @@ export default function UploadProjectPage({
     setPendingMedia(prev => {
       const next = [...prev];
       for (const f of items) {
-        const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const id = createTempId();
         const isImage = (f.type || '').startsWith('image/');
         const isVideo = (f.type || '').startsWith('video/');
-        if (isImage || isVideo) next.push({ id, file: f, type: isImage ? 'image' : 'video', isCover: false });
+        if (isImage || isVideo) next.push({ id, kind: 'file', file: f, type: isImage ? 'image' : 'video', isCover: false });
       }
       return next;
     });
@@ -193,51 +228,88 @@ export default function UploadProjectPage({
     });
   };
 
+  const movePendingMedia = (id: string, delta: number) => {
+    setPendingMedia(prev => {
+      const index = prev.findIndex(item => item.id === id);
+      if (index === -1) return prev;
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const reordered = [...prev];
+      const [item] = reordered.splice(index, 1);
+      reordered.splice(nextIndex, 0, item);
+      return reordered;
+    });
+  };
+
+  const handleAddVideoUrl = () => {
+    const url = (videoUrl || '').trim();
+    if (!/^https?:\/\//i.test(url)) {
+      alert('Enter a valid http(s) URL');
+      return;
+    }
+    setPendingMedia(prev => [...prev, { id: createTempId(), kind: 'url', url, type: 'video' }]);
+    setVideoUrl('');
+  };
+
+  const togglePendingCover = (id: string, checked: boolean) => {
+    setPendingMedia(prev =>
+      prev.map(item => {
+        if (!isFileMedia(item) || item.type !== 'image') return item;
+        if (item.id === id) return { ...item, isCover: checked };
+        return checked ? { ...item, isCover: false } : item;
+      })
+    );
+  };
+
   async function uploadPending(pid: string) {
     let coverChosenPath: string | null = null;
+    let assignedDefaultCover = false;
     const hasExistingCover = (files || []).some(f => f.is_cover && f.file_type === 'image');
-    const anyMarkedCover = pendingMedia.some(m => m.type === 'image' && m.isCover);
+    const fileMedia = pendingMedia.filter(isFileMedia);
+    const anyMarkedCover = fileMedia.some(m => m.type === 'image' && m.isCover);
     if (anyMarkedCover) {
       await supabase.from('project_files').update({ is_cover: false }).eq('project_id', pid).eq('file_type', 'image');
     }
     for (let i = 0; i < pendingMedia.length; i++) {
-      const m = pendingMedia[i];
-      const isImage = m.type === 'image';
-      const res = await uploadProjectFile({ projectId: pid, fileType: m.type, file: m.file, generateThumbnail: isImage });
-      const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-      const setAsCover = isImage && ((m.isCover === true) || (!hasExistingCover && !coverChosenPath && i === 0));
+      const item = pendingMedia[i];
+      if (!isFileMedia(item)) {
+        const rowId = createTempId();
+        const row: any = {
+          id: rowId,
+          project_id: pid,
+          file_name: item.url,
+          file_url: item.url,
+          file_path: null,
+          file_type: 'video',
+          file_size: 0,
+          mime_type: 'text/url',
+          is_cover: false
+        };
+        await supabase.from('project_files').insert([row]);
+        continue;
+      }
+      const isImage = item.type === 'image';
+      const res = await uploadProjectFile({ projectId: pid, fileType: item.type, file: item.file, generateThumbnail: isImage });
+      const rowId = createTempId();
+      const setAsCover = isImage && ((item.isCover === true) || (!hasExistingCover && !coverChosenPath && !assignedDefaultCover));
       const row: any = {
         id: rowId,
         project_id: pid,
-        file_name: m.file.name,
+        file_name: item.file.name,
         file_url: res.fileUrl,
         file_path: res.filePath,
-        file_type: m.type,
-        file_size: m.file.size,
-        mime_type: m.file.type,
+        file_type: item.type,
+        file_size: item.file.size,
+        mime_type: item.file.type,
         is_cover: setAsCover
       };
       await supabase.from('project_files').insert([row]);
-      if (row.is_cover) coverChosenPath = row.file_path;
+      if (row.is_cover) {
+        coverChosenPath = row.file_path;
+        assignedDefaultCover = true;
+      }
     }
     if (coverChosenPath) await supabase.from('projects').update({ cover_image: coverChosenPath }).eq('id', pid);
-    // Insert video URLs
-    for (const v of pendingVideoUrls) {
-      const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-      const row: any = {
-        id: rowId,
-        project_id: pid,
-        file_name: v.url,
-        file_url: v.url,
-        file_path: null,
-        file_type: 'video',
-        file_size: 0,
-        mime_type: 'text/url',
-        is_cover: false
-      };
-      await supabase.from('project_files').insert([row]);
-    }
-    setPendingVideoUrls([]);
     for (const d of pendingDocs) {
       const res = await uploadProjectFile({ projectId: pid, fileType: d.type, file: d.file, generateThumbnail: false });
       const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -293,11 +365,11 @@ export default function UploadProjectPage({
     if (!el) return;
     const start = el.selectionStart || 0;
     const end = el.selectionEnd || 0;
-    const before = descriptionHtml.slice(0, start);
-    const selected = descriptionHtml.slice(start, end);
-    const after = descriptionHtml.slice(end);
+    const before = fullDescription.slice(0, start);
+    const selected = fullDescription.slice(start, end);
+    const after = fullDescription.slice(end);
     const next = `${before}${prefix}${selected}${suffix}${after}`;
-    setDescriptionHtml(next);
+    setFullDescription(next);
     requestAnimationFrame(() => {
       try { el.selectionStart = start + prefix.length; el.selectionEnd = end + prefix.length; el.focus(); } catch {}
     });
@@ -313,7 +385,7 @@ export default function UploadProjectPage({
         description: shortDescription || null,
         category: category || null,
         visibility,
-        description_html: descriptionHtml || null,
+        full_description: fullDescription || null,
         tags: tags || []
       };
       await supabase.from('projects').update(payload).eq('id', pid);
@@ -542,73 +614,94 @@ export default function UploadProjectPage({
                     <Button type="button" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload media'}</Button>
                     <div className="flex gap-2">
                       <Input placeholder="Paste video URL (YouTube, etc.)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-                      <Button type="button" onClick={() => {
-                        const url = (videoUrl || '').trim();
-                        if (!/^https?:\/\//i.test(url)) { alert('Enter a valid http(s) URL'); return; }
-                        setPendingVideoUrls(prev => [...prev, { id: (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`), url }]);
-                        setVideoUrl('');
-                      }}>Add URL</Button>
+                      <Button type="button" onClick={handleAddVideoUrl}>Add URL</Button>
                     </div>
                   </div>
                 </div>
-                {pendingVideoUrls.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {pendingVideoUrls.map(v => (
-                      <div key={v.id} className="border rounded p-2 bg-background">
-                        <div className="flex items-center justify-between gap-2">
-                          <a href={v.url} target="_blank" className="truncate text-primary underline text-xs">{v.url}</a>
-                          <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingVideoUrls(prev => prev.filter(x => x.id !== v.id))}><X className="w-4 h-4" /></Button>
-                        </div>
-                        <div className="mt-2">
-                          {(() => {
-                            const u = String(v.url || "");
-                            let embed = u;
-                            const m = u.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([0-9A-Za-z_-]{11})/);
-                            if (m && m[1]) embed = `https://www.youtube.com/embed/${m[1]}?rel=0`;
-                            const vm = u.match(/vimeo\.com\/(\d+)/);
-                            if (!m && vm && vm[1]) embed = `https://player.vimeo.com/video/${vm[1]}`;
-                            return (
-                              <div className="aspect-video w-full">
-                                <iframe src={embed} className="w-full h-full rounded" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Video preview" />
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 <p className="text-xs text-muted-foreground mb-3">First uploaded image becomes the cover. You can change it below.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {pendingMedia.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    {pendingMedia.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                        <div className="w-12 h-12 flex items-center justify-center rounded bg-muted overflow-hidden">
-                          {m.type === 'image' ? (
-                            <img src={URL.createObjectURL(m.file)} alt="preview" className="w-12 h-12 object-cover" />
+                  <div className="space-y-3 mb-4">
+                    {pendingMedia.map((m, index) => (
+                      <div key={m.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
+                        {m.kind === 'url' ? (
+                          <div className="flex-shrink-0" style={{ width: VIDEO_PREVIEW_WIDTH }}>
+                            <div className="aspect-video rounded-md overflow-hidden bg-muted">
+                              <iframe
+                                src={getVideoEmbedUrl(m.url)}
+                                className="w-full h-full"
+                                title={`Video preview ${index + 1}`}
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
+                            style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
+                          >
+                            {m.type === 'image' ? (
+                              <img
+                                src={URL.createObjectURL(m.file)}
+                                alt="preview"
+                                className="max-w-full max-h-full object-cover"
+                              />
+                            ) : (
+                              <FileText className="w-6 h-6 text-muted-foreground" />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 text-sm">
+                          {m.kind === 'file' ? (
+                            <div className="flex flex-col gap-1">
+                              <div className="font-medium text-primary truncate">{m.file.name}</div>
+                              <div className="text-xs text-muted-foreground truncate">{m.file.type} · {m.file.size.toLocaleString()} bytes</div>
+                              {m.type === 'image' && (
+                                <label className="inline-flex items-center gap-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!m.isCover}
+                                    onChange={(e) => togglePendingCover(m.id, e.target.checked)}
+                                  />
+                                  Make cover
+                                </label>
+                              )}
+                            </div>
                           ) : (
-                            <FileText className="w-5 h-5" />
+                            <>
+                              <a href={m.url} target="_blank" rel="noreferrer" className="font-medium text-primary underline truncate">{m.url}</a>
+                              <div className="text-xs text-muted-foreground">Video URL</div>
+                            </>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate text-sm font-medium">{m.file.name}</div>
-                          <div className="text-xs text-muted-foreground truncate">{m.file.type} · {m.file.size.toLocaleString()} bytes</div>
-                          {m.type === 'image' && (
-                            <label className="inline-flex items-center gap-2 text-xs mt-1">
-                              <input type="checkbox" checked={!!m.isCover} onChange={(e) => {
-                                const checked = e.target.checked;
-                                setPendingMedia(prev => prev.map(x => x.id === m.id ? { ...x, isCover: checked } : { ...x, isCover: checked ? false : x.isCover }));
-                              }} />
-                              Make cover
-                            </label>
-                          )}
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Move up"
+                            disabled={index === 0}
+                            onClick={() => movePendingMedia(m.id, -1)}
+                          >
+                            <MoveUp className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Move down"
+                            disabled={index === pendingMedia.length - 1}
+                            onClick={() => movePendingMedia(m.id, 1)}
+                          >
+                            <MoveDown className="w-4 h-4" />
+                          </Button>
                         </div>
                         <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
                       </div>
                     ))}
                   </div>
                 )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {(files.filter(f => f.file_type === 'image' || f.file_type === 'video')).map((f) => (
                     <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
                       <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
@@ -693,7 +786,7 @@ export default function UploadProjectPage({
                   <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<a href=\"\">', '</a>')}><LinkIcon className="w-3 h-3" /></Button>
                 </div>
               </div>
-              <Textarea ref={descRef} rows={10} value={descriptionHtml} onChange={(e) => setDescriptionHtml(e.target.value)} placeholder="Write your project page content (HTML allowed)" />
+              <Textarea ref={descRef} rows={10} value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Write your project page content (HTML allowed)" />
               <p className="text-xs text-muted-foreground">Tip: Basic HTML supported. Use buttons for quick formatting.</p>
             </CardContent>
           </Card>
@@ -749,7 +842,7 @@ export default function UploadProjectPage({
                 const pid = await ensureProject();
                 await uploadPending(pid);
                 const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
-                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, description_html: descriptionHtml || null, tags }).eq('id', pid);
+                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, full_description: fullDescription || null, tags }).eq('id', pid);
                 window.location.href = `/projects/${pid}`;
               } catch (e: any) { alert(e?.message || 'Failed to save'); }
             }}>Save</Button>

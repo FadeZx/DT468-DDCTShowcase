@@ -46,7 +46,7 @@ create table if not exists public.projects (
   id uuid primary key,
   title text not null,
   description text,
-  long_description text,
+  full_description text,
   category text,
   author_id uuid references public.profiles(id) on delete cascade,
   tags text[] default array[]::text[],
