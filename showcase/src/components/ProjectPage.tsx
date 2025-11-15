@@ -65,7 +65,8 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     projectId: project.id,
     currentUser,
     supabase,
-    onLikeChange: onProjectUpdate
+    onLikeChange: onProjectUpdate,
+    enabled: project.visibility === 'public'
   });
 
   const fullDescriptionHtml = useMemo(() => {

@@ -51,6 +51,7 @@ create table if not exists public.projects (
   author_id uuid references public.profiles(id) on delete cascade,
   tags text[] default array[]::text[],
   status text check (status in ('draft','published')) default 'draft',
+  visibility text check (visibility in ('unlisted','public')) default 'unlisted',
   price numeric default 0,
   cover_image text,
   created_at timestamptz default now()

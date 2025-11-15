@@ -1,6 +1,6 @@
 import { Header } from './components/Header';
 import { AuthDialog } from './components/AuthDialog';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { HomePage } from './components/HomePage';
 import { ProjectPage } from './components/ProjectPage';
@@ -44,10 +44,18 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
     );
   }
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
+  };
+
   return (
     <ProjectPage
       project={project}
-      onBack={() => navigate('/')}
+      onBack={handleBack}
       currentUser={currentUser}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
@@ -286,6 +294,7 @@ export default function App() {
   const [usersState, setUsersState] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
+  const publicProjects = useMemo(() => projects.filter(p => p.visibility === 'public'), [projects]);
 
   // Increment a project's view count once per session and reflect in UI
   const incrementProjectView = async (projectId: string) => {
@@ -349,123 +358,175 @@ export default function App() {
     }
   };
 
-  // Load only real projects from Supabase (remove mock templates)
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: rows, error } = await supabase
+  const hydrateProjects = async (rows: any[]) => {
+    if (!rows || rows.length === 0) return [];
+    const ownerIds = Array.from(new Set(rows.map((r: any) => r.owner_id).filter(Boolean)));
+    let owners: any[] = [];
+    if (ownerIds.length) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name, email, avatar, year')
+        .in('id', ownerIds);
+      owners = profiles || [];
+    }
+    const projectIds = rows.map((r: any) => r.id);
+    let coverMap: Record<string, string> = {};
+    if (projectIds.length) {
+      const { data: files } = await supabase
+        .from('project_files')
+        .select('project_id,file_url,file_path,file_type,is_cover,created_at')
+        .in('project_id', projectIds)
+        .eq('file_type', 'image')
+        .order('created_at', { ascending: true });
+      const grouped: Record<string, any[]> = {};
+      (files || []).forEach(f => { (grouped[f.project_id] ||= []).push(f); });
+      for (const pid of Object.keys(grouped)) {
+        const arr = grouped[pid];
+        const coverFirst = [...arr].sort((a, b) => (b.is_cover ? 1 : 0) - (a.is_cover ? 1 : 0));
+        const chosen = coverFirst[0];
+        if (chosen) {
+          coverMap[pid] = (chosen.file_path?.startsWith('projects/') ? chosen.file_path : '') || chosen.file_url || '';
+        }
+      }
+    }
+    const likeCounts = projectIds.length ? await getProjectLikeCounts(supabase, projectIds) : {};
+    let membersByProject: Record<string, any[]> = {};
+    if (projectIds.length) {
+      const { data: collabRows } = await supabase
+        .from('project_collaborators')
+        .select('project_id, user_id, job_role')
+        .in('project_id', projectIds);
+      const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
+      let memberProfiles: any[] = [];
+      if (memberIds.length) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('id, name, avatar, year')
+          .in('id', memberIds);
+        memberProfiles = profs || [];
+      }
+      const profMap = new Map(memberProfiles.map(p => [p.id, p] as const));
+      (collabRows || []).forEach(r => {
+        const prof = profMap.get(r.user_id);
+        if (!prof) return;
+        (membersByProject[r.project_id] ||= []).push({
+          id: prof.id,
+          name: prof.name || 'Unknown',
+          avatar: prof.avatar || null,
+          year: prof.year || 'Unknown',
+          jobRole: (r as any).job_role || null
+        });
+      });
+    }
+    return rows.map((p: any) => {
+      const author = owners.find(o => o.id === p.owner_id);
+      const likeCount = (likeCounts as any)[p.id] || 0;
+      const normalizedVisibility = p.visibility === 'public' ? 'public' : 'unlisted';
+      return {
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        full_description: p.full_description || '',
+        category: p.category || 'Others',
+        featured: false,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+        status: normalizedVisibility === 'public' ? 'published' : 'unlisted',
+        visibility: normalizedVisibility,
+        author_id: p.owner_id,
+        cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
+        views: Number((p as any).views) || 0,
+        downloads: Number((p as any).downloads) || 0,
+        likes: likeCount,
+        tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t: string) => t.trim()) : []),
+        author: author ? {
+          id: author.id,
+          name: author.name || author.email || 'Unknown',
+          avatar: author.avatar || null,
+          year: author.year || 'Unknown'
+        } : {
+          id: p.owner_id,
+          name: 'Unknown',
+          avatar: null,
+          year: 'Unknown'
+        },
+        stats: { views: Number((p as any).views) || 0, downloads: Number((p as any).downloads) || 0, likes: likeCount },
+        media: { all: [], images: [], videos: [], downloads: [] },
+        members: membersByProject[p.id] || []
+      };
+    });
+  };
+
+  const buildRowsWithAccess = async (userId?: string) => {
+    const { data: publicRows, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('visibility', 'public')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    let rows = [...(publicRows || [])];
+    const seen = new Set(rows.map(r => r.id));
+    if (userId) {
+      const { data: ownedRows } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('owner_id', userId)
+        .eq('visibility', 'unlisted')
+        .order('updated_at', { ascending: false });
+      (ownedRows || []).forEach(row => {
+        if (!seen.has(row.id)) {
+          seen.add(row.id);
+          rows.push(row);
+        }
+      });
+      const { data: collaboratorLinks } = await supabase
+        .from('project_collaborators')
+        .select('project_id')
+        .eq('user_id', userId);
+      const collaboratorIds = (collaboratorLinks || [])
+        .map((link: any) => link.project_id)
+        .filter((id): id is string => Boolean(id) && !seen.has(id));
+      if (collaboratorIds.length) {
+        const { data: collabProjects } = await supabase
           .from('projects')
           .select('*')
-          .eq('visibility', 'public')
-          .order('created_at', { ascending: false });
-        if (error) throw error;
-        const ownerIds = Array.from(new Set((rows || []).map(r => r.owner_id).filter(Boolean)));
-        let owners: any[] = [];
-        if (ownerIds.length) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, name, email, avatar, year')
-            .in('id', ownerIds);
-          owners = profiles || [];
-        }
-        // Fetch candidate cover images for all projects in one query, prefer is_cover then earliest image
-        const projectIds = (rows || []).map(r => r.id);
-        let coverMap: Record<string, string> = {};
-        if (projectIds.length) {
-          const { data: files } = await supabase
-            .from('project_files')
-            .select('project_id,file_url,file_path,file_type,is_cover,created_at')
-            .in('project_id', projectIds)
-            .eq('file_type', 'image')
-            .order('created_at', { ascending: true });
-          const grouped: Record<string, any[]> = {};
-          (files || []).forEach(f => { (grouped[f.project_id] ||= []).push(f); });
-          for (const pid of Object.keys(grouped)) {
-            const arr = grouped[pid];
-            const coverFirst = [...arr].sort((a,b) => (b.is_cover?1:0)-(a.is_cover?1:0));
-            const chosen = coverFirst[0];
-            if (chosen) {
-              coverMap[pid] = (chosen.file_path?.startsWith('projects/') ? chosen.file_path : '') || chosen.file_url || '';
-            }
+          .in('id', collaboratorIds)
+          .eq('visibility', 'unlisted');
+        (collabProjects || []).forEach(row => {
+          if (!seen.has(row.id)) {
+            seen.add(row.id);
+            rows.push(row);
           }
-        }
-
-        // Fetch like counts for all projects (reuse projectIds from above)
-        const likeCounts = await getProjectLikeCounts(supabase, projectIds);
-
-        // Fetch collaborators and their profiles
-        let membersByProject: Record<string, any[]> = {};
-        if (projectIds.length) {
-          const { data: collabRows } = await supabase
-            .from('project_collaborators')
-            .select('project_id, user_id, job_role')
-            .in('project_id', projectIds);
-          const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
-          let memberProfiles: any[] = [];
-          if (memberIds.length) {
-            const { data: profs } = await supabase
-              .from('profiles')
-              .select('id, name, avatar, year')
-              .in('id', memberIds);
-            memberProfiles = profs || [];
-          }
-          const profMap = new Map(memberProfiles.map(p => [p.id, p] as const));
-          (collabRows || []).forEach(r => {
-            const prof = profMap.get(r.user_id);
-            if (!prof) return;
-            (membersByProject[r.project_id] ||= []).push({
-              id: prof.id,
-              name: prof.name || 'Unknown',
-              avatar: prof.avatar || null,
-              year: prof.year || 'Unknown',
-              jobRole: (r as any).job_role || null
-            });
-          });
-        }
-
-        const supabaseProjects = (rows || []).map(p => {
-          const author = owners.find(o => o.id === p.owner_id);
-          const likeCount = likeCounts[p.id] || 0;
-          return {
-            id: p.id,
-            title: p.title,
-            description: p.description,
-            full_description: p.full_description || '',
-            category: p.category || 'Others',
-            featured: false,
-            created_at: p.created_at,
-            updated_at: p.updated_at,
-            status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
-            author_id: p.owner_id,
-            cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
-            views: Number((p as any).views) || 0,
-            downloads: Number((p as any).downloads) || 0,
-            likes: likeCount,
-            tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
-            author: author ? {
-              id: author.id,
-              name: author.name || author.email || 'Unknown',
-              avatar: author.avatar || null,
-              year: author.year || 'Unknown'
-            } : {
-              id: p.owner_id,
-              name: 'Unknown',
-              avatar: null,
-              year: 'Unknown'
-            },
-            stats: { views: Number((p as any).views) || 0, downloads: Number((p as any).downloads) || 0, likes: likeCount },
-            media: { all: [], images: [], videos: [], downloads: [] },
-            members: membersByProject[p.id] || []
-          };
         });
-        setProjects(supabaseProjects);
-      } catch (e) {
-        console.warn('Failed to load Supabase projects', e);
-      } finally {
-        setLoading(false);
       }
-    })();
-  }, []);
+    }
+    rows.sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
+    return rows;
+  };
+
+  const fetchProjectsForUser = async (userId?: string) => {
+    const rows = await buildRowsWithAccess(userId);
+    return hydrateProjects(rows);
+  };
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchProjectsForUser(currentUser?.id)
+      .then(data => {
+        if (active) setProjects(data);
+      })
+      .catch(e => {
+        console.warn('Failed to load Supabase projects', e);
+        if (active) setProjects([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id]);
 
   const loadMockData = () => {
     // Mock removed; rely on Supabase only.
@@ -594,114 +655,9 @@ export default function App() {
   };
 
   const loadData = async () => {
-    // Reload projects to refresh like counts
     try {
-      const { data: rows, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('visibility', 'public')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      
-      const ownerIds = Array.from(new Set((rows || []).map(r => r.owner_id).filter(Boolean)));
-      let owners: any[] = [];
-      if (ownerIds.length) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, name, email, avatar, year')
-          .in('id', ownerIds);
-        owners = profiles || [];
-      }
-      
-      const projectIds = (rows || []).map(r => r.id);
-      let coverMap: Record<string, string> = {};
-      if (projectIds.length) {
-        const { data: files } = await supabase
-          .from('project_files')
-          .select('project_id,file_url,file_path,file_type,is_cover,created_at')
-          .in('project_id', projectIds)
-          .eq('file_type', 'image')
-          .order('created_at', { ascending: true });
-        const grouped: Record<string, any[]> = {};
-        (files || []).forEach(f => { (grouped[f.project_id] ||= []).push(f); });
-        for (const pid of Object.keys(grouped)) {
-          const arr = grouped[pid];
-          const coverFirst = [...arr].sort((a,b) => (b.is_cover?1:0)-(a.is_cover?1:0));
-          const chosen = coverFirst[0];
-          if (chosen) {
-            coverMap[pid] = (chosen.file_path?.startsWith('projects/') ? chosen.file_path : '') || chosen.file_url || '';
-          }
-        }
-      }
-
-      const likeCounts = await getProjectLikeCounts(supabase, projectIds);
-
-      // Fetch collaborators and their profiles
-      let membersByProject: Record<string, any[]> = {};
-      if (projectIds.length) {
-        const { data: collabRows } = await supabase
-          .from('project_collaborators')
-          .select('project_id, user_id, job_role')
-          .in('project_id', projectIds);
-        const memberIds = Array.from(new Set((collabRows || []).map(r => r.user_id).filter(Boolean)));
-        let memberProfiles: any[] = [];
-        if (memberIds.length) {
-          const { data: profs } = await supabase
-            .from('profiles')
-            .select('id, name, avatar, year')
-            .in('id', memberIds);
-          memberProfiles = profs || [];
-        }
-        const profMap = new Map(memberProfiles.map(p => [p.id, p] as const));
-        (collabRows || []).forEach(r => {
-          const prof = profMap.get(r.user_id);
-          if (!prof) return;
-          (membersByProject[r.project_id] ||= []).push({
-            id: prof.id,
-            name: prof.name || 'Unknown',
-            avatar: prof.avatar || null,
-            year: prof.year || 'Unknown',
-            jobRole: (r as any).job_role || null
-          });
-        });
-      }
-
-      const supabaseProjects = (rows || []).map(p => {
-        const author = owners.find(o => o.id === p.owner_id);
-        const likeCount = likeCounts[p.id] || 0;
-          return {
-          id: p.id,
-          title: p.title,
-          description: p.description,
-          full_description: p.full_description || '',
-          category: p.category || 'Others',
-          featured: false,
-          created_at: p.created_at,
-          updated_at: p.updated_at,
-          status: (p.visibility === 'public' ? 'published' : (p.visibility || 'draft')),
-          author_id: p.owner_id,
-          cover_image: p.cover_image || coverMap[p.id] || '/placeholder-project.svg',
-          views: Number((p as any).views) || 0,
-          downloads: Number((p as any).downloads) || 0,
-          likes: likeCount,
-          tags: Array.isArray(p.tags) ? p.tags : (p.tags ? String(p.tags).split(',').map((t:string)=>t.trim()) : []),
-          author: author ? {
-            id: author.id,
-            name: author.name || author.email || 'Unknown',
-            avatar: author.avatar || null,
-            year: author.year || 'Unknown'
-          } : {
-            id: p.owner_id,
-            name: 'Unknown',
-            avatar: null,
-            year: 'Unknown'
-          },
-          stats: { views: Number((p as any).views) || 0, downloads: Number((p as any).downloads) || 0, likes: likeCount },
-          media: { all: [], images: [], videos: [], downloads: [] },
-          members: membersByProject[p.id] || []
-        };
-      });
-      setProjects(supabaseProjects);
+      const updatedProjects = await fetchProjectsForUser(currentUser?.id);
+      setProjects(updatedProjects);
     } catch (e) {
       console.warn('Failed to reload projects', e);
     }
@@ -735,7 +691,7 @@ export default function App() {
           <Routes>
               <Route path="/" element={
                 <HomePage
-                  projects={projects}
+                  projects={publicProjects}
                   onProjectClick={handleProjectClick}
                 />
               } />
@@ -854,7 +810,7 @@ export default function App() {
               } />
               
               <Route path="/browse" element={
-                <BrowseAll projects={projects} onProjectClick={handleProjectClick} />
+                <BrowseAll projects={publicProjects} onProjectClick={handleProjectClick} />
               } />
               
               <Route path="/events" element={
@@ -875,7 +831,7 @@ export default function App() {
                 )
               } />
               <Route path="/search" element={
-                <SearchResults projects={projects} onProjectClick={handleProjectClick} />
+                <SearchResults projects={publicProjects} onProjectClick={handleProjectClick} />
               } />
             </Routes>
           </>

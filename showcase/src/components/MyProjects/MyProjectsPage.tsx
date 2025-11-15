@@ -36,22 +36,25 @@ export default function MyProjectsPage({
   onViewProject,
   onDeleteProject
 }: MyProjectsPageProps) {
-  const [filter, setFilter] = useState<'all' | 'public' | 'draft' | 'private' | 'unlisted'>('all');
+  const [filter, setFilter] = useState<'all' | 'public' | 'unlisted'>('all');
   
   // Filter projects to show only current user's projects
   const userProjects = projects.filter(project => project.author_id === currentUser?.id);
 
+  const normalizeVisibility = (v?: string) => {
+    if (v === 'draft' || v === 'private' || !v) return 'unlisted';
+    return v;
+  };
+
   const filteredProjects = userProjects.filter(project => {
     if (filter === 'all') return true;
-    return (project.visibility || 'draft') === filter;
+    return normalizeVisibility(project.visibility) === filter;
   });
 
   const getVisibilityColor = (v: string) => {
     switch (v) {
       case 'public': return 'bg-green-100 text-green-800';
-      case 'draft': return 'bg-gray-100 text-gray-800';
       case 'unlisted': return 'bg-yellow-100 text-yellow-800';
-      case 'private': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -85,10 +88,8 @@ export default function MyProjectsPage({
           <div className="flex gap-2">
             {[
               { key: 'all', label: 'All Projects', count: userProjects.length },
-              { key: 'public', label: 'Public', count: userProjects.filter(p => p.visibility === 'public').length },
-              { key: 'draft', label: 'Drafts', count: userProjects.filter(p => p.visibility === 'draft').length },
-              { key: 'private', label: 'Private', count: userProjects.filter(p => p.visibility === 'private').length },
-              { key: 'unlisted', label: 'Unlisted', count: userProjects.filter(p => p.visibility === 'unlisted').length }
+              { key: 'public', label: 'Public', count: userProjects.filter(p => normalizeVisibility(p.visibility) === 'public').length },
+              { key: 'unlisted', label: 'Unlisted', count: userProjects.filter(p => normalizeVisibility(p.visibility) === 'unlisted').length }
             ].map(({ key, label, count }) => (
               <Button
                 key={key}
@@ -132,8 +133,10 @@ export default function MyProjectsPage({
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProjects.map((project) => (
-              <Card key={project.id} className="hover:shadow-lg transition-shadow">
+            {filteredProjects.map((project) => {
+              const projectVisibility = normalizeVisibility(project.visibility);
+              return (
+                <Card key={project.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -141,8 +144,8 @@ export default function MyProjectsPage({
                         {project.title}
                       </CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge className={getVisibilityColor(project.visibility)}>
-                          {(project.visibility || '').replace('-', ' ')}
+                        <Badge className={getVisibilityColor(projectVisibility)}>
+                          {projectVisibility.replace('-', ' ')}
                         </Badge>
                         <Badge variant="outline">
                           {project.category}
@@ -212,7 +215,7 @@ export default function MyProjectsPage({
 
                   {/* Dates */}
                   <div className="text-xs text-gray-400 space-y-1">
-                    {(project.visibility === 'public') && (
+                    {(projectVisibility === 'public') && (
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         Published: {new Date(project.created_at).toLocaleDateString()}
@@ -244,7 +247,8 @@ export default function MyProjectsPage({
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 

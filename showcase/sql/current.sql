@@ -101,7 +101,7 @@ CREATE TABLE public.projects (
   created_at timestamp with time zone DEFAULT now(),
   owner_id uuid NOT NULL,
   slug text,
-  visibility text NOT NULL DEFAULT 'draft'::text CHECK (visibility = ANY (ARRAY['draft'::text, 'private'::text, 'unlisted'::text, 'public'::text])),
+  visibility text NOT NULL DEFAULT 'unlisted'::text CHECK (visibility = ANY (ARRAY['unlisted'::text, 'public'::text])),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   views bigint NOT NULL DEFAULT 0,
   full_description text,

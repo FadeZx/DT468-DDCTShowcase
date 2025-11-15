@@ -11,6 +11,7 @@ interface ProjectCardProps {
     title: string;
     description: string;
     category: string;
+    visibility?: 'unlisted' | 'public';
     thumbnail?: string;
     cover_image?: string;
     author: {
@@ -89,21 +90,25 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
       </div>
       
       <div className="flex flex-col" style={{ height: infoHeightPx }}>
-        <CardContent className="px-3 pt-1 pb-3 flex-1 overflow-hidden">
-          <h3 className="font-semibold mb-1 line-clamp-1 group-hover:text-primary transition-colors text-sm">
+        <CardContent className="px-3 pt-1 pb-3 flex flex-col flex-1 overflow-hidden">
+          <h3 className="font-semibold mb-1 line-clamp-1 group-hover:text-primary transition-colors text-sm flex items-center gap-2">
             {project.title}
+            {project.visibility === 'unlisted' && (
+              <Badge variant="secondary" className="text-[9px] uppercase tracking-wide">
+                Unlisted
+              </Badge>
+            )}
           </h3>
-          <div className="overflow-hidden mb-1 min-h-[2.6em]">
+          <div className="flex-1 overflow-hidden mb-1 min-h-[2.6em]">
             <p className="text-xs text-muted-foreground line-clamp-2 leading-snug max-h-[2.6em]">
               {project.description}
             </p>
           </div>
           
-          <div className="mt-auto flex items-center">
-            {/* Stacked member avatars */}
+          <div className="mt-auto pt-1 flex items-center">
             {project.members && project.members.length > 0 ? (
               <div className="flex items-center -space-x-2">
-                {project.members.slice(0, 3).map((member, index) => (
+                {project.members.slice(0, 3).map((member) => (
                   <Avatar key={member.id} className="w-6 h-6 border-2 border-background">
                     <AvatarImage src={member.avatar || '/placeholder-avatar.svg'} />
                     <AvatarFallback className="text-[10px]">
@@ -112,13 +117,13 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
                   </Avatar>
                 ))}
                 {project.members.length > 3 && (
-                  <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                    <span className="text-[9px] font-medium">+{project.members.length - 3}</span>
+                  <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[9px] font-medium">
+                    +{project.members.length - 3}
                   </div>
                 )}
               </div>
             ) : (
-              <Avatar className="w-5 h-5">
+              <Avatar className="w-6 h-6 border-2 border-background">
                 <AvatarImage src={project.author.avatar || '/placeholder-avatar.svg'} />
                 <AvatarFallback className="text-[10px]">{project.author.name[0]}</AvatarFallback>
               </Avatar>

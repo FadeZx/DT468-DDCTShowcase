@@ -5,18 +5,26 @@ interface UseProjectLikesProps {
   currentUser: any;
   supabase: any;
   onLikeChange?: () => void;
+  enabled?: boolean;
 }
 
-export function useProjectLikes({ projectId, currentUser, supabase, onLikeChange }: UseProjectLikesProps) {
+export function useProjectLikes({ projectId, currentUser, supabase, onLikeChange, enabled = true }: UseProjectLikesProps) {
   const [likesCount, setLikesCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) {
+      setLikesCount(0);
+      setIsLiked(false);
+      setLoading(false);
+      return;
+    }
     loadLikes();
-  }, [projectId, currentUser]);
+  }, [projectId, currentUser, enabled]);
 
   const loadLikes = async () => {
+    if (!enabled) return;
     try {
       setLoading(true);
       
@@ -51,7 +59,7 @@ export function useProjectLikes({ projectId, currentUser, supabase, onLikeChange
   };
 
   const toggleLike = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !enabled) return;
 
     try {
       // Optimistically update UI

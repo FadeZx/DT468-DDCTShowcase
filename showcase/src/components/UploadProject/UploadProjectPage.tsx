@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -46,7 +47,9 @@ export default function UploadProjectPage({
   currentUser,
   projectId: editProjectId,
   onProjectUpdated,
+  initialProject,
 }: UploadProjectPageProps = {}) {
+  const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [newMember, setNewMember] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -62,7 +65,7 @@ export default function UploadProjectPage({
   const [shortDescription, setShortDescription] = useState('');
   const [category, setCategory] = useState('');
   const [customCategory, setCustomCategory] = useState('');
-  const [visibility, setVisibility] = useState<'draft' | 'private' | 'unlisted' | 'public'>('draft');
+  const [visibility, setVisibility] = useState<'unlisted' | 'public'>('unlisted');
   const [fullDescription, setFullDescription] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
   const [files, setFiles] = useState<Array<any>>([]);
@@ -167,6 +170,57 @@ export default function UploadProjectPage({
     } catch (e) {}
   };
 
+  const detailsPrefilled = useRef(false);
+
+  useEffect(() => {
+    detailsPrefilled.current = false;
+  }, [editProjectId]);
+
+  useEffect(() => {
+    if (!editProjectId || detailsPrefilled.current) return;
+    const applyProjectDetails = (proj: any) => {
+      setTitle(proj.title || '');
+      setShortDescription(proj.description || '');
+      setFullDescription(proj.full_description || '');
+      const knownCategories = ['Art', 'Animation', 'Game', 'Simulation', 'Others'];
+      const incomingCategory = proj.category || '';
+      if (!incomingCategory) {
+        setCategory('');
+        setCustomCategory('');
+      } else if (knownCategories.includes(incomingCategory)) {
+        setCategory(incomingCategory);
+        if (incomingCategory === 'Others') {
+          setCustomCategory('');
+        } else {
+          setCustomCategory('');
+        }
+      } else {
+        setCategory('Others');
+        setCustomCategory(incomingCategory);
+      }
+      setVisibility(proj.visibility === 'public' ? 'public' : 'unlisted');
+      detailsPrefilled.current = true;
+    };
+
+    if (initialProject) {
+      applyProjectDetails(initialProject);
+      return;
+    }
+
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('projects')
+          .select('title, description, category, full_description, visibility')
+          .eq('id', editProjectId)
+          .single();
+        if (data) applyProjectDetails(data);
+      } catch (error) {
+        console.warn('Failed to load project details', error);
+      }
+    })();
+  }, [editProjectId, initialProject]);
+
   // Helpers for new upload mode
   const ensureProject = async (): Promise<string> => {
     if (editProjectId) return editProjectId;
@@ -179,7 +233,7 @@ export default function UploadProjectPage({
       title: title?.trim() || 'Untitled Project',
       owner_id: currentUser.id,
       author_id: currentUser.id,
-      visibility: 'draft',
+      visibility: 'unlisted',
       category: resolvedCategory,
       description: shortDescription || null,
       full_description: fullDescription || null,
@@ -394,7 +448,7 @@ export default function UploadProjectPage({
         const rows = members.filter(m => m.id !== currentUser?.id).map(m => ({ project_id: pid, user_id: m.id, job_role: m.role || null, role: 'member', invited_by: currentUser?.id }));
         if (rows.length) await supabase.from('project_collaborators').insert(rows);
       }
-      alert('Draft saved');
+      alert(visibility === 'public' ? 'Saved and published.' : 'Saved. Project remains unlisted.');
     } catch (e: any) {
       alert(e?.message || 'Failed to save');
     }
@@ -532,9 +586,10 @@ export default function UploadProjectPage({
 
       alert('Edit Saved');
       if (editProjectId) {
-        window.location.href = `/projects/${editProjectId}`;
+        onProjectUpdated?.();
+        navigate(`/projects/${editProjectId}`, { replace: true });
       } else {
-        window.location.href = '/';
+        navigate('/', { replace: true });
       }
     } catch (e: any) {
       console.error(e);
@@ -588,11 +643,12 @@ export default function UploadProjectPage({
                 <div>
                   <label className="block text-sm font-medium mb-1">Visibility</label>
                   <select className="w-full border rounded-md h-9 px-2 bg-background" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
-                    <option value="draft">Draft</option>
-                    <option value="private">Private</option>
                     <option value="unlisted">Unlisted</option>
                     <option value="public">Public</option>
                   </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Unlisted projects stay off the home page and search results, but you and your collaborators can access them via profile.
+                  </p>
                 </div>
               </div>
               <div>
@@ -843,7 +899,8 @@ export default function UploadProjectPage({
                 await uploadPending(pid);
                 const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
                 await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, full_description: fullDescription || null, tags }).eq('id', pid);
-                window.location.href = `/projects/${pid}`;
+                onProjectUpdated?.();
+                navigate(`/projects/${pid}`, { replace: editProjectId ? true : false });
               } catch (e: any) { alert(e?.message || 'Failed to save'); }
             }}>Save</Button>
           </div>
@@ -884,6 +941,24 @@ export default function UploadProjectPage({
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-6">
+              <Card>
+                <CardContent className="space-y-4 pt-6">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Visibility</label>
+                    <select
+                      className="w-full border rounded-md h-9 px-2 bg-background"
+                      value={visibility}
+                      onChange={(e) => setVisibility(e.target.value as 'unlisted' | 'public')}
+                    >
+                      <option value="unlisted">Unlisted (hidden from gallery)</option>
+                      <option value="public">Public</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Switch to public when you are ready for the project to appear on the home page and search.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
               <Card>
               <Card>
                 <CardContent className="space-y-4 pt-6">
