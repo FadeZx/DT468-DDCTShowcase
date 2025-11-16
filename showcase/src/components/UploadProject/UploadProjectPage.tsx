@@ -581,12 +581,13 @@ export default function UploadProjectPage({
         }
       }
 
-      // Save tags to project
-      await supabase.from('projects').update({ tags }).eq('id', editProjectId);
+      // Save visibility and tags to project
+      const { error: tagErr } = await supabase.from('projects').update({ tags, visibility }).eq('id', editProjectId);
+      if (tagErr) throw tagErr;
 
       alert('Edit Saved');
       if (editProjectId) {
-        onProjectUpdated?.();
+        if (onProjectUpdated) await onProjectUpdated();
         navigate(`/projects/${editProjectId}`, { replace: true });
       } else {
         navigate('/', { replace: true });
@@ -898,8 +899,9 @@ export default function UploadProjectPage({
                 const pid = await ensureProject();
                 await uploadPending(pid);
                 const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
-                await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, full_description: fullDescription || null, tags }).eq('id', pid);
-                onProjectUpdated?.();
+                const { error: updateErr } = await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, full_description: fullDescription || null, tags }).eq('id', pid);
+                if (updateErr) throw updateErr;
+                if (onProjectUpdated) await onProjectUpdated();
                 navigate(`/projects/${pid}`, { replace: editProjectId ? true : false });
               } catch (e: any) { alert(e?.message || 'Failed to save'); }
             }}>Save</Button>

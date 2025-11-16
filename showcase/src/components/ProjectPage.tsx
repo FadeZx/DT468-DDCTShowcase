@@ -631,7 +631,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               <Card>
                 <CardHeader>
                   <CardTitle>Description</CardTitle>
-                  <p className="text-sm text-muted-foreground">Pulled directly from the project submission.</p>
                 </CardHeader>
                 <CardContent>
                   {fullDescriptionHtml ? (
