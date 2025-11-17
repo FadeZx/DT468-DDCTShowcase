@@ -678,22 +678,24 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                     Files ({downloadableFiles.length})
                   </Button>
                 )}
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-3">
                 <Button 
                   variant="outline" 
                   size="sm"
                   onClick={toggleLike}
                   disabled={!currentUser || likesLoading}
-                  className={isLiked ? 'text-red-500 border-red-500 hover:text-red-600 hover:border-red-600' : ''}
+                  className={`min-w-[140px] ${isLiked ? 'text-red-500 border-red-500 hover:text-red-600 hover:border-red-600' : ''}`}
                 >
                   <Heart className={`mr-2 h-4 w-4 transition-all ${isLiked ? 'fill-current' : ''}`} />
                   {isLiked ? 'Liked' : 'Like'} ({likesCount})
                 </Button>
+                <Button variant="outline" size="sm" className="min-w-[140px]">
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Share
+                </Button>
               </div>
-              
-              <Button variant="outline" size="sm" className="w-full">
-                <Share2 className="mr-2 h-4 w-4" />
-                Share
-              </Button>
             </CardContent>
           </Card>
 
