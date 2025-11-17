@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
-import { Plus, X, Users, Crown, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star, MoveUp, MoveDown } from 'lucide-react';
+import { Plus, X, Users, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star, MoveUp, MoveDown } from 'lucide-react';
 import { TagPicker } from '../TagPicker';
 import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
 
@@ -77,6 +77,8 @@ export default function UploadProjectPage({
   const [videoUrl, setVideoUrl] = useState('');
   // Removed global make-cover toggle; cover is chosen per-image in previews
 
+  const isEditing = Boolean(editProjectId);
+
   const createTempId = () =>
     globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -106,7 +108,7 @@ export default function UploadProjectPage({
       loadProjectTags();
       // load existing files for edit mode display if needed later
       (async () => {
-        const { data } = await supabase.from('project_files').select('*').eq('project_id', editProjectId).order('created_at', { ascending: false });
+        const { data } = await supabase.from('project_files').select('*').eq('project_id', editProjectId).order('created_at', { ascending: true });
         setFiles(data || []);
       })();
     }
@@ -250,7 +252,7 @@ export default function UploadProjectPage({
       .from('project_files')
       .select('*')
       .eq('project_id', pid)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: true });
     setFiles(data || []);
   };
 
@@ -321,12 +323,14 @@ export default function UploadProjectPage({
     const hasExistingCover = (files || []).some(f => f.is_cover && f.file_type === 'image');
     const fileMedia = pendingMedia.filter(isFileMedia);
     const anyMarkedCover = fileMedia.some(m => m.type === 'image' && m.isCover);
+    const baseTime = Date.now();
     if (anyMarkedCover) {
       await supabase.from('project_files').update({ is_cover: false }).eq('project_id', pid).eq('file_type', 'image');
     }
     for (let i = 0; i < pendingMedia.length; i++) {
       const item = pendingMedia[i];
       if (!isFileMedia(item)) {
+        const created = new Date(baseTime + i).toISOString();
         const rowId = createTempId();
         const row: any = {
           id: rowId,
@@ -337,7 +341,8 @@ export default function UploadProjectPage({
           file_type: 'video',
           file_size: 0,
           mime_type: 'text/url',
-          is_cover: false
+          is_cover: false,
+          created_at: created
         };
         await supabase.from('project_files').insert([row]);
         continue;
@@ -346,6 +351,7 @@ export default function UploadProjectPage({
       const res = await uploadProjectFile({ projectId: pid, fileType: item.type, file: item.file, generateThumbnail: isImage });
       const rowId = createTempId();
       const setAsCover = isImage && ((item.isCover === true) || (!hasExistingCover && !coverChosenPath && !assignedDefaultCover));
+      const created = new Date(baseTime + i).toISOString();
       const row: any = {
         id: rowId,
         project_id: pid,
@@ -355,7 +361,8 @@ export default function UploadProjectPage({
         file_type: item.type,
         file_size: item.file.size,
         mime_type: item.file.type,
-        is_cover: setAsCover
+        is_cover: setAsCover,
+        created_at: created
       };
       await supabase.from('project_files').insert([row]);
       if (row.is_cover) {
@@ -364,9 +371,11 @@ export default function UploadProjectPage({
       }
     }
     if (coverChosenPath) await supabase.from('projects').update({ cover_image: coverChosenPath }).eq('id', pid);
-    for (const d of pendingDocs) {
+    for (let idx = 0; idx < pendingDocs.length; idx++) {
+      const d = pendingDocs[idx];
       const res = await uploadProjectFile({ projectId: pid, fileType: d.type, file: d.file, generateThumbnail: false });
       const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const created = new Date(baseTime + pendingMedia.length + idx).toISOString();
       const row: any = {
         id: rowId,
         project_id: pid,
@@ -376,7 +385,8 @@ export default function UploadProjectPage({
         file_type: d.type,
         file_size: d.file.size,
         mime_type: d.file.type,
-        is_cover: false
+        is_cover: false,
+        created_at: created
       };
       await supabase.from('project_files').insert([row]);
     }
@@ -414,6 +424,16 @@ export default function UploadProjectPage({
     }
   };
 
+  const persistFileOrder = async (pid: string) => {
+    const mediaOnly = files.filter(f => f.file_type === 'image' || f.file_type === 'video');
+    if (!mediaOnly.length) return;
+    const base = Date.now();
+    for (let i = 0; i < mediaOnly.length; i++) {
+      const when = new Date(base + i).toISOString();
+      await supabase.from('project_files').update({ created_at: when }).eq('id', mediaOnly[i].id);
+    }
+  };
+
   const wrapSelection = (prefix: string, suffix: string) => {
     const el = descRef.current;
     if (!el) return;
@@ -429,28 +449,68 @@ export default function UploadProjectPage({
     });
   };
 
-  const handleSaveDraft = async () => {
+  const handleSaveProject = async () => {
+    if (!currentUser) {
+      alert('You must be logged in to save a project');
+      return;
+    }
+    if (!title.trim()) {
+      alert('Title is required');
+      return;
+    }
+
+    setIsUploading(true);
     try {
       const pid = await ensureProject();
-      // Upload any staged files first
       await uploadPending(pid);
-      const payload: any = {
-        title: title?.trim() || 'Untitled Project',
-        description: shortDescription || null,
-        category: category || null,
+      const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
+      await supabase.from('projects').update({
         visibility,
+        title: title?.trim(),
+        description: shortDescription || null,
+        category: finalCategory,
         full_description: fullDescription || null,
-        tags: tags || []
-      };
-      await supabase.from('projects').update(payload).eq('id', pid);
-      await supabase.from('project_collaborators').upsert({ project_id: pid, user_id: currentUser?.id, job_role: ownerJobRole || null, role: 'owner', invited_by: currentUser?.id }, { onConflict: 'project_id,user_id' });
-      if (members.length > 0) {
-        const rows = members.filter(m => m.id !== currentUser?.id).map(m => ({ project_id: pid, user_id: m.id, job_role: m.role || null, role: 'member', invited_by: currentUser?.id }));
-        if (rows.length) await supabase.from('project_collaborators').insert(rows);
+        tags
+      }).eq('id', pid);
+
+      const resolvedOwnerId = owner?.id || currentUser?.id || null;
+      if (resolvedOwnerId) {
+        await supabase.from('project_collaborators').upsert({
+          project_id: pid,
+          user_id: resolvedOwnerId,
+          job_role: ownerJobRole || null,
+          role: 'owner',
+          invited_by: currentUser?.id
+        }, { onConflict: 'project_id,user_id' });
+
+        await supabase
+          .from('project_collaborators')
+          .delete()
+          .eq('project_id', pid)
+          .neq('user_id', resolvedOwnerId);
+
+        if (members.length > 0) {
+          const rows = members
+            .filter(m => m.id !== resolvedOwnerId)
+            .map(m => ({
+              project_id: pid,
+              user_id: m.id,
+              job_role: m.role || null,
+              role: 'member',
+              invited_by: currentUser?.id
+            }));
+          if (rows.length) await supabase.from('project_collaborators').insert(rows);
+        }
       }
-      alert(visibility === 'public' ? 'Saved and published.' : 'Saved. Project remains unlisted.');
+
+      await persistFileOrder(pid);
+      if (onProjectUpdated) await onProjectUpdated();
+      navigate(`/projects/${pid}`, { replace: !!editProjectId });
     } catch (e: any) {
+      console.error(e);
       alert(e?.message || 'Failed to save');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -526,395 +586,11 @@ export default function UploadProjectPage({
     setMembers(prev => prev.filter(m => m.id !== memberId));
   };
 
-  const handleSubmit = async () => {
-    if (!currentUser) {
-      alert('You must be logged in to manage project members');
-      return;
-    }
-
-    if (!editProjectId) {
-      alert('No project ID provided');
-      return;
-    }
-
-    setIsUploading(true);
-
-    try {
-      // Upsert owner job role row (cannot be removed by policies)
-      if (owner?.id) {
-        const { error: upsertOwnerErr } = await supabase
-          .from('project_collaborators')
-          .upsert({
-            project_id: editProjectId,
-            user_id: owner.id,
-            job_role: ownerJobRole || null,
-            role: 'owner',
-            invited_by: currentUser?.id,
-          }, { onConflict: 'project_id,user_id' });
-        if (upsertOwnerErr) throw upsertOwnerErr;
-      }
-
-      // Delete existing non-owner collaborators
-      await supabase
-        .from('project_collaborators')
-        .delete()
-        .eq('project_id', editProjectId)
-        .neq('user_id', owner?.id || '00000000-0000-0000-0000-000000000000');
-
-      // Insert collaborators (non-owners)
-      if (members.length > 0) {
-        const memberRows = members
-          .filter(m => m.id !== owner?.id)
-          .map(member => ({
-            project_id: editProjectId,
-            user_id: member.id,
-            job_role: member.role || null,
-            role: 'member',
-            invited_by: currentUser?.id
-          }));
-
-        if (memberRows.length) {
-          const { error: memberErr } = await supabase
-            .from('project_collaborators')
-            .insert(memberRows);
-          if (memberErr) throw memberErr;
-        }
-      }
-
-      // Save visibility and tags to project
-      const { error: tagErr } = await supabase.from('projects').update({ tags, visibility }).eq('id', editProjectId);
-      if (tagErr) throw tagErr;
-
-      alert('Edit Saved');
-      if (editProjectId) {
-        if (onProjectUpdated) await onProjectUpdated();
-        navigate(`/projects/${editProjectId}`, { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
-    } catch (e: any) {
-      console.error(e);
-      alert(e.message || 'Failed to update project members');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // New upload page UI (no projectId)
-  if (!editProjectId) {
+  // Unified upload/edit page UI
+  if (loading && isEditing) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-5xl mx-auto px-4">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create a New Project</h1>
-            <p className="text-gray-600">Uploads and details â€” one page, like itch.io.</p>
-          </div>
-
-          {/* Details */}
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-4">
-              <h2 className="text-xl font-semibold">Details</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Title <span className="text-red-500">*</span></label>
-                  <Input required aria-invalid={title.trim().length === 0} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Project title" />
-                  {title.trim().length === 0 && (
-                    <p className="text-xs text-red-500 mt-1">Title is required</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Category</label>
-                  <select className="w-full border rounded-md h-9 px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
-                    <option value="">Select category</option>
-                    <option value="Art">Art</option>
-                    <option value="Animation">Animation</option>
-                    <option value="Game">Game</option>
-                    <option value="Simulation">Simulation</option>
-                    <option value="Others">Others</option>
-                  </select>
-                  {category === 'Others' && (
-                    <div className="mt-2">
-                      <label className="block text-xs text-muted-foreground mb-1">Specify category</label>
-                      <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Visibility</label>
-                  <select className="w-full border rounded-md h-9 px-2 bg-background" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
-                    <option value="unlisted">Unlisted</option>
-                    <option value="public">Public</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Unlisted projects stay off the home page and search results, but you and your collaborators can access them via profile.
-                  </p>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Short description</label>
-                <Textarea rows={3} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="One-liner shown in cards" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Uploads (separated) */}
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-6">
-              {/* Media */}
-              <div>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                  <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Media (images/videos)</h2>
-                  <div className="flex items-center gap-3">
-                    <input ref={mediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => chooseFiles(e.target.files)} />
-                    <Button type="button" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload media'}</Button>
-                    <div className="flex gap-2">
-                      <Input placeholder="Paste video URL (YouTube, etc.)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-                      <Button type="button" onClick={handleAddVideoUrl}>Add URL</Button>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mb-3">First uploaded image becomes the cover. You can change it below.</p>
-                {pendingMedia.length > 0 && (
-                  <div className="space-y-3 mb-4">
-                    {pendingMedia.map((m, index) => (
-                      <div key={m.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
-                        {m.kind === 'url' ? (
-                          <div className="flex-shrink-0" style={{ width: VIDEO_PREVIEW_WIDTH }}>
-                            <div className="aspect-video rounded-md overflow-hidden bg-muted">
-                              <iframe
-                                src={getVideoEmbedUrl(m.url)}
-                                className="w-full h-full"
-                                title={`Video preview ${index + 1}`}
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div
-                            className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
-                            style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
-                          >
-                            {m.type === 'image' ? (
-                              <img
-                                src={URL.createObjectURL(m.file)}
-                                alt="preview"
-                                className="max-w-full max-h-full object-cover"
-                              />
-                            ) : (
-                              <FileText className="w-6 h-6 text-muted-foreground" />
-                            )}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0 text-sm">
-                          {m.kind === 'file' ? (
-                            <div className="flex flex-col gap-1">
-                              <div className="font-medium text-primary truncate">{m.file.name}</div>
-                              <div className="text-xs text-muted-foreground truncate">{m.file.type} · {m.file.size.toLocaleString()} bytes</div>
-                              {m.type === 'image' && (
-                                <label className="inline-flex items-center gap-2 text-xs">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!m.isCover}
-                                    onChange={(e) => togglePendingCover(m.id, e.target.checked)}
-                                  />
-                                  Make cover
-                                </label>
-                              )}
-                            </div>
-                          ) : (
-                            <>
-                              <a href={m.url} target="_blank" rel="noreferrer" className="font-medium text-primary underline truncate">{m.url}</a>
-                              <div className="text-xs text-muted-foreground">Video URL</div>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Move up"
-                            disabled={index === 0}
-                            onClick={() => movePendingMedia(m.id, -1)}
-                          >
-                            <MoveUp className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Move down"
-                            disabled={index === pendingMedia.length - 1}
-                            onClick={() => movePendingMedia(m.id, 1)}
-                          >
-                            <MoveDown className="w-4 h-4" />
-                          </Button>
-                        </div>
-                        <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {(files.filter(f => f.file_type === 'image' || f.file_type === 'video')).map((f) => (
-                    <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                        {f.file_type === 'image' ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate text-sm font-medium">{f.file_name}</div>
-                        <div className="text-xs text-muted-foreground truncate">{f.mime_type} Â· {(f.file_size || 0).toLocaleString()} bytes</div>
-                      </div>
-                      {f.file_type === 'image' && (
-                        <Button size="sm" variant={f.is_cover ? 'default' : 'outline'} onClick={() => handleSetCover(f.id)} className="mr-2">
-                          <Star className="w-3 h-3 mr-1" /> {f.is_cover ? 'Cover' : 'Set cover'}
-                        </Button>
-                      )}
-                      <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
-                    </div>
-                  ))}
-                  {(files.filter(f => f.file_type === 'image' || f.file_type === 'video')).length === 0 && (
-                    <div className="text-sm text-muted-foreground">No media uploaded yet.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Project files */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Project Files</h2>
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={projectInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => chooseFiles(e.target.files)}
-                      accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
-                    />
-                    <Button type="button" disabled={uploadingFiles} onClick={() => projectInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload files'}</Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {pendingDocs.map(d => (
-                    <div key={d.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate text-sm font-medium">{d.file.name}</div>
-                        <div className="text-xs text-muted-foreground truncate">{d.file.type} · {d.file.size.toLocaleString()} bytes</div>
-                      </div>
-                      <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
-                    </div>
-                  ))}
-                  {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).map((f) => (
-                    <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                      <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate text-sm font-medium">{f.file_name}</div>
-                        <div className="text-xs text-muted-foreground truncate">{f.mime_type} Â· {(f.file_size || 0).toLocaleString()} bytes</div>
-                      </div>
-                      <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
-                    </div>
-                  ))}
-                  {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).length === 0 && (
-                    <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Description */}
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Description</h2>
-                <div className="flex items-center gap-1">
-                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<b>', '</b>')}><Bold className="w-3 h-3" /></Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<i>', '</i>')}><Italic className="w-3 h-3" /></Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<ul>\n<li>', '</li>\n</ul>')}><List className="w-3 h-3" /></Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<a href=\"\">', '</a>')}><LinkIcon className="w-3 h-3" /></Button>
-                </div>
-              </div>
-              <Textarea ref={descRef} rows={10} value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Write your project page content (HTML allowed)" />
-              <p className="text-xs text-muted-foreground">Tip: Basic HTML supported. Use buttons for quick formatting.</p>
-            </CardContent>
-          </Card>
-
-          {/* Tags */}
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <Hash className="w-4 h-4 text-muted-foreground" />
-                <h3 className="font-semibold">Tags</h3>
-              </div>
-              <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
-            </CardContent>
-          </Card>
-
-          {/* Team */}
-          <Card className="mb-6">
-            <CardContent className="pt-6 space-y-4">
-              <h3 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" /> Team</h3>
-              <div>
-                <label className="block text-sm font-medium mb-2">Add Member by Email</label>
-                <div className="flex gap-2">
-                  <Input placeholder="Enter email address" value={newMember} onChange={(e) => setNewMember(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addMember()} className="flex-1" />
-                  <Button onClick={addMember} size="default"><Plus className="w-4 h-4 mr-2" />Add</Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {members.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between p-2 border rounded-md">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={member.avatar || undefined} />
-                        <AvatarFallback>{member.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{member.name}</div>
-                        <div className="text-xs text-muted-foreground">{member.email}</div>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeMember(member.id)} aria-label="Remove"><X className="w-4 h-4" /></Button>
-                  </div>
-                ))}
-                {members.length === 0 && <div className="text-sm text-muted-foreground">No members yet.</div>}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2">
-
-            <Button disabled={title.trim().length === 0} onClick={async () => {
-              try {
-                const pid = await ensureProject();
-                await uploadPending(pid);
-                const finalCategory = (category === 'Others' ? (customCategory.trim() || 'Others') : category) || null;
-                const { error: updateErr } = await supabase.from('projects').update({ visibility, title: title?.trim(), description: shortDescription || null, category: finalCategory, full_description: fullDescription || null, tags }).eq('id', pid);
-                if (updateErr) throw updateErr;
-                if (onProjectUpdated) await onProjectUpdated();
-                navigate(`/projects/${pid}`, { replace: editProjectId ? true : false });
-              } catch (e: any) { alert(e?.message || 'Failed to save'); }
-            }}>Save</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-4xl mx-auto px-4">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -928,204 +604,344 @@ export default function UploadProjectPage({
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
+      <div className="max-w-5xl mx-auto px-4">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Manage Project Members
-          </h1>
-          <p className="text-gray-600">
-            Invite team members to collaborate on this project
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{isEditing ? 'Edit Project' : 'Create a New Project'}</h1>
+          <p className="text-gray-600">Uploads and details - one page, like itch.io.</p>
         </div>
 
-        {/* Main Content */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-6">
-              <Card>
-                <CardContent className="space-y-4 pt-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Visibility</label>
-                    <select
-                      className="w-full border rounded-md h-9 px-2 bg-background"
-                      value={visibility}
-                      onChange={(e) => setVisibility(e.target.value as 'unlisted' | 'public')}
-                    >
-                      <option value="unlisted">Unlisted (hidden from gallery)</option>
-                      <option value="public">Public</option>
-                    </select>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Switch to public when you are ready for the project to appear on the home page and search.
-                    </p>
+        {/* Details */}
+        <Card className="mb-6">
+          <CardContent className="pt-6 space-y-4">
+            <h2 className="text-xl font-semibold">Details</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Title <span className="text-red-500">*</span></label>
+                <Input required aria-invalid={title.trim().length === 0} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Project title" />
+                {title.trim().length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Title is required</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Category</label>
+                <select className="w-full border rounded-md h-9 px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
+                  <option value="">Select category</option>
+                  <option value="Art">Art</option>
+                  <option value="Animation">Animation</option>
+                  <option value="Game">Game</option>
+                  <option value="Simulation">Simulation</option>
+                  <option value="Others">Others</option>
+                </select>
+                {category === 'Others' && (
+                  <div className="mt-2">
+                    <label className="block text-xs text-muted-foreground mb-1">Specify category</label>
+                    <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
                   </div>
-                </CardContent>
-              </Card>
-              <Card>
-              <Card>
-                <CardContent className="space-y-4 pt-6">
-                  <div className="flex items-center gap-2">
-                    <Hash className="w-4 h-4 text-muted-foreground" />
-                    <h3 className="font-semibold">Project Tags</h3>
-                  </div>
-                  <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
-                  <p className="text-xs text-muted-foreground">Max 10 tags. Use common words users might search for.</p>
-                </CardContent>
-              </Card>
-                <CardContent className="space-y-6 pt-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Add Member by Email</label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter email address"
-                        value={newMember}
-                        onChange={(e) => setNewMember(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addMember()}
-                        className="flex-1"
-                      />
-                      <Button onClick={addMember} size="default">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Enter the email address of an existing user. They will be added immediately without needing to accept.
-                    </p>
-                  </div>
-
-                  {members.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold mb-3">Project Members ({members.length + (owner ? 1 : 0)})</h3>
-                      <div className="space-y-2">
-                        {owner && (
-                          <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="w-10 h-10">
-                                <AvatarImage src={owner.avatar || undefined} />
-                                <AvatarImage src="/placeholder-avatar.svg" />
-                                <AvatarFallback>
-                                  {owner.name?.charAt(0)?.toUpperCase() || 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium text-sm flex items-center gap-2">
-                                  {owner.name || owner.email}
-                                  <span className="inline-flex items-center text-xs text-amber-500">
-                                    <Crown className="w-3 h-3 mr-1" /> Owner
-                                  </span>
-                                </p>
-                                <div className="mt-1">
-                                  <label className="text-xs text-muted-foreground mr-2">Job role</label>
-                                  <select
-                                    className="text-xs border rounded px-2 py-1 bg-background"
-                                    value={ownerJobRole}
-                                    onChange={(e) => setOwnerJobRole(e.target.value)}
-                                  >
-                                    <option value="">(none)</option>
-                                    <option value="contributor">Contributor</option>
-                                    <option value="programmer">Programmer</option>
-                                    <option value="artist">Artist</option>
-                                    <option value="designer">Designer</option>
-                                    <option value="modeler">Modeler</option>
-                                    <option value="animator">Animator</option>
-                                    <option value="sound">Sound</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-                            {/* owner cannot be removed â€” no action shown */}
-                          </div>
-                        )}
-                        {members.filter(member => member.id !== (owner?.id || '')).map(member => (
-                          <div key={member.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="w-10 h-10">
-                                <AvatarImage src={member.avatar || undefined} />
-                                <AvatarImage src="/placeholder-avatar.svg" />
-                                <AvatarFallback>
-                                  {member.name?.charAt(0)?.toUpperCase() || 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium text-sm">{member.name}</p>
-                                <p className="text-xs text-muted-foreground">{member.email}</p>
-                                <div className="mt-1">
-                                  <label className="text-xs text-muted-foreground mr-2">Job role</label>
-                                  <select
-                                    className="text-xs border rounded px-2 py-1 bg-background"
-                                    value={member.role}
-                                    onChange={(e) => {
-                                      const role = e.target.value;
-                                      setMembers(prev => prev.map(m => m.id === member.id ? { ...m, role } : m));
-                                    }}
-                                  >
-                                    <option value="contributor">Contributor</option>
-                                    <option value="programmer">Programmer</option>
-                                    <option value="artist">Artist</option>
-                                    <option value="designer">Designer</option>
-                                    <option value="modeler">Modeler</option>
-                                    <option value="animator">Animator</option>
-                                    <option value="sound">Sound</option>
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeMember(member.id)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {members.length === 0 && (
-                    <div className="text-center py-8 border-2 border-dashed rounded-lg">
-                      <Users className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">No members added yet</p>
-                      <p className="text-xs text-muted-foreground mt-1">Add members by entering their email above</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Visibility</label>
+                <select className="w-full border rounded-md h-9 px-2 bg-background" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="public">Public</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Unlisted projects stay off the home page and search results, but you and your collaborators can access them via profile.
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Short description</label>
+              <Textarea rows={3} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="One-liner shown in cards" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Save Button */}
-        <div className="flex justify-end mt-8">
-          <Button
-            onClick={handleSubmit}
-            disabled={isUploading}
-            size="lg"
-            className="flex items-center gap-2"
-          >
-            {isUploading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Users className="w-4 h-4" />Save</>
-            )}
+        {/* Uploads (separated) */}
+        <Card className="mb-6">
+          <CardContent className="pt-6 space-y-6">
+            {/* Media */}
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Media (images/videos)</h2>
+                <div className="flex items-center gap-3">
+                  <input ref={mediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => chooseFiles(e.target.files)} />
+                  <Button type="button" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload media'}</Button>
+                  <div className="flex gap-2">
+                    <Input placeholder="Paste video URL (YouTube, etc.)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+                    <Button type="button" onClick={handleAddVideoUrl}>Add URL</Button>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">First uploaded image becomes the cover. You can change it below.</p>
+              {pendingMedia.length > 0 && (
+                <div className="space-y-3 mb-4">
+                  {pendingMedia.map((m, index) => (
+                    <div key={m.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
+                      {m.kind === 'url' ? (
+                        <div className="flex-shrink-0" style={{ width: VIDEO_PREVIEW_WIDTH }}>
+                          <div className="aspect-video rounded-md overflow-hidden bg-muted">
+                            <iframe
+                              src={getVideoEmbedUrl(m.url)}
+                              className="w-full h-full"
+                              title={`Video preview ${index + 1}`}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
+                          style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
+                        >
+                          {m.type === 'image' ? (
+                            <img
+                              src={URL.createObjectURL(m.file)}
+                              alt="preview"
+                              className="max-w-full max-h-full object-cover"
+                            />
+                          ) : (
+                            <FileText className="w-6 h-6 text-muted-foreground" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 text-sm">
+                        {m.kind === 'file' ? (
+                          <div className="flex flex-col gap-1">
+                            <div className="font-medium text-primary truncate">{m.file.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">{m.file.type} - {m.file.size.toLocaleString()} bytes</div>
+                            {m.type === 'image' && (
+                              <label className="inline-flex items-center gap-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={!!m.isCover}
+                                  onChange={(e) => togglePendingCover(m.id, e.target.checked)}
+                                />
+                                <span>Use as cover image</span>
+                              </label>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="font-medium text-primary truncate">{m.url}</div>
+                        )}
+                      </div>
+                      {pendingMedia.length > 1 && (
+                        <div className="flex flex-col gap-1">
+                          <Button type="button" size="icon" variant="ghost" onClick={() => movePendingMedia(m.id, -1)} aria-label="Move up"><MoveUp className="w-4 h-4" /></Button>
+                          <Button type="button" size="icon" variant="ghost" onClick={() => movePendingMedia(m.id, 1)} aria-label="Move down"><MoveDown className="w-4 h-4" /></Button>
+                        </div>
+                      )}
+                      <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div>
+                <h3 className="font-medium mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Existing media</h3>
+                {files.filter(f => f.file_type === 'image' || f.file_type === 'video').length > 0 ? (
+                  <div className="space-y-3">
+                    {files.filter(f => f.file_type === 'image' || f.file_type === 'video').map((f, idx) => (
+                      <div key={f.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
+                        <div
+                          className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
+                          style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
+                        >
+                          {f.file_type === 'image' ? (
+                            <img src={f.file_url} alt={f.file_name} className="max-w-full max-h-full object-cover" />
+                          ) : (
+                            <video src={f.file_url} controls className="w-full h-full object-cover" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 text-sm">
+                          <div className="font-medium text-primary truncate">{f.file_name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{f.mime_type} - {(f.file_size || 0).toLocaleString()} bytes</div>
+                          {f.file_type === 'image' && f.is_cover && (
+                            <div className="inline-flex items-center gap-1 text-xs text-yellow-600 mt-1">
+                              <Star className="w-4 h-4" /> Cover image
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {files.filter(ff => ff.file_type === 'image' || ff.file_type === 'video').length > 1 && (
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                disabled={idx === 0}
+                                onClick={() => setFiles(prev => {
+                                  const list = prev.filter(ff => ff.file_type === 'image' || ff.file_type === 'video');
+                                  const others = prev.filter(ff => ff.file_type !== 'image' && ff.file_type !== 'video');
+                                  const i = list.findIndex(item => item.id === f.id);
+                                  if (i <= 0) return prev;
+                                  const reordered = [...list];
+                                  const [item] = reordered.splice(i, 1);
+                                  reordered.splice(i - 1, 0, item);
+                                  return [...reordered, ...others];
+                                })}
+                                aria-label="Move up"
+                              >
+                                <MoveUp className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                disabled={idx === files.filter(ff => ff.file_type === 'image' || ff.file_type === 'video').length - 1}
+                                onClick={() => setFiles(prev => {
+                                  const list = prev.filter(ff => ff.file_type === 'image' || ff.file_type === 'video');
+                                  const others = prev.filter(ff => ff.file_type !== 'image' && ff.file_type !== 'video');
+                                  const i = list.findIndex(item => item.id === f.id);
+                                  if (i === -1 || i === list.length - 1) return prev;
+                                  const reordered = [...list];
+                                  const [item] = reordered.splice(i, 1);
+                                  reordered.splice(i + 1, 0, item);
+                                  return [...reordered, ...others];
+                                })}
+                                aria-label="Move down"
+                              >
+                                <MoveDown className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
+                          {f.file_type === 'image' && (
+                            <Button variant="outline" size="sm" onClick={() => handleSetCover(f.id)} disabled={f.is_cover}>
+                              {f.is_cover ? <><Star className="w-4 h-4 mr-1 text-yellow-500" /> Cover</> : 'Make cover'}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(f.id)} aria-label="Remove"><X className="w-4 h-4" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No media uploaded yet.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Project files */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Project Files</h2>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={projectInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => chooseFiles(e.target.files)}
+                    accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+                  />
+                  <Button type="button" disabled={uploadingFiles} onClick={() => projectInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload files'}</Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {pendingDocs.map(d => (
+                  <div key={d.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                    <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-sm font-medium">{d.file.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
+                    </div>
+                    <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).map((f) => (
+                  <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                    <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-sm font-medium">{f.file_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{f.mime_type} - {(f.file_size || 0).toLocaleString()} bytes</div>
+                    </div>
+                    <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
+                  </div>
+                ))}
+                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).length === 0 && (
+                  <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Description */}
+        <Card className="mb-6">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Description</h2>
+              <div className="flex items-center gap-1">
+                <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<b>', '</b>')}><Bold className="w-3 h-3" /></Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<i>', '</i>')}><Italic className="w-3 h-3" /></Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<ul>\n<li>', '</li>\n</ul>')}><List className="w-3 h-3" /></Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => wrapSelection('<a href="">', '</a>')}><LinkIcon className="w-3 h-3" /></Button>
+              </div>
+            </div>
+            <Textarea ref={descRef} rows={10} value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} placeholder="Write your project page content (HTML allowed)" />
+            <p className="text-xs text-muted-foreground">Tip: Basic HTML supported. Use buttons for quick formatting.</p>
+          </CardContent>
+        </Card>
+
+        {/* Tags */}
+        <Card className="mb-6">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <Hash className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-semibold">Tags</h3>
+            </div>
+            <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
+          </CardContent>
+        </Card>
+
+        {/* Team */}
+        <Card className="mb-6">
+          <CardContent className="pt-6 space-y-4">
+            <h3 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" /> Team</h3>
+            <div>
+              <label className="block text-sm font-medium mb-2">Add Member by Email</label>
+              <div className="flex gap-2">
+                <Input placeholder="Enter email address" value={newMember} onChange={(e) => setNewMember(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addMember()} className="flex-1" />
+                <Button onClick={addMember} size="default"><Plus className="w-4 h-4 mr-2" />Add</Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {members.map((member) => (
+                <div key={member.id} className="flex items-center justify-between p-2 border rounded-md">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage src={member.avatar || undefined} />
+                      <AvatarFallback>{member.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-medium">{member.name}</div>
+                      <div className="text-xs text-muted-foreground">{member.email}</div>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => removeMember(member.id)} aria-label="Remove"><X className="w-4 h-4" /></Button>
+                </div>
+              ))}
+              {members.length === 0 && <div className="text-sm text-muted-foreground">No members yet.</div>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2">
+          <Button disabled={title.trim().length === 0 || isUploading} onClick={handleSaveProject}>
+            {isUploading ? 'Saving...' : isEditing ? 'Save changes' : 'Save'}
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
-
-
-
-
-
 
 
 
