@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import supabase from './supabase/client';
 // IMPORTANT: Reuse the app's singleton Supabase client to avoid multiple GoTrueClient instances
 
@@ -44,6 +45,38 @@ export function generateFilePath(
 
 export function generateFileId(): string {
   return Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+const WEBGL_MIME_MAP: Record<string, string> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.css': 'text/css',
+  '.wasm': 'application/wasm',
+  '.data': 'application/octet-stream',
+  '.unityweb': 'application/octet-stream',
+  '.mem': 'application/octet-stream',
+  '.txt': 'text/plain',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.manifest': 'application/json'
+};
+
+function inferMimeTypeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  const lastDot = lower.lastIndexOf('.');
+  const ext = lastDot >= 0 ? lower.slice(lastDot) : '';
+  if (ext && WEBGL_MIME_MAP[ext]) return WEBGL_MIME_MAP[ext];
+  if (lower.endsWith('/')) return 'application/octet-stream';
+  return 'application/octet-stream';
 }
 
 export async function uploadProjectFile({
@@ -118,6 +151,82 @@ export async function uploadProjectFile({
   }
 }
 
+function normalizeZipPath(path: string, rootPrefix: string) {
+  const normalized = path.replace(/\\/g, '/');
+  const normalizedRoot = rootPrefix.replace(/\\/g, '/');
+  if (normalizedRoot && normalized.startsWith(normalizedRoot)) {
+    return normalized.slice(normalizedRoot.length).replace(/^\/+/, '');
+  }
+  const trimmed = normalized.startsWith('./') ? normalized.slice(2) : normalized;
+  const safeParts = trimmed.split('/').filter(part => part && part !== '..');
+  return safeParts.join('/');
+}
+
+async function detectWebGLZip(zipFile: File) {
+  if (!zipFile.name.toLowerCase().endsWith('.zip')) return null;
+  const zip = await JSZip.loadAsync(zipFile);
+  const entryNames = Object.keys(zip.files);
+  const indexEntry = entryNames.find((name) => !zip.files[name].dir && name.toLowerCase().endsWith('index.html'));
+  if (!indexEntry) return null;
+  const hasRuntime = entryNames.some((name) => {
+    const lower = name.toLowerCase();
+    return lower.endsWith('.wasm') || lower.endsWith('.data') || lower.endsWith('.unityweb') || lower.includes('/build/');
+  });
+  if (!hasRuntime) return null;
+  const rootPrefix = indexEntry.includes('/') ? indexEntry.slice(0, indexEntry.lastIndexOf('/') + 1) : '';
+  return { zip, indexEntry, rootPrefix };
+}
+
+export async function uploadWebGLBuildFromZip(params: { projectId: string; zipFile: File; folderName?: string; }) {
+  const detection = await detectWebGLZip(params.zipFile);
+  if (!detection) return null;
+
+  const { zip, indexEntry, rootPrefix } = detection;
+  const bucket = 'project-files';
+  const baseFolder = `projects/${params.projectId}/webgl/${params.folderName || generateFileId()}/`;
+  const uploadedPaths: string[] = [];
+
+  try {
+    const entries = Object.entries(zip.files);
+    for (const [name, entry] of entries) {
+      if (entry.dir) continue;
+      const relative = normalizeZipPath(name, rootPrefix);
+      const destination = `${baseFolder}${relative}`;
+      const mime = inferMimeTypeFromName(relative);
+      const fileBytes = await entry.async('uint8array');
+      const blob = new File([fileBytes], relative, { type: mime });
+      const { error } = await supabase.storage.from(bucket).upload(destination, blob, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: mime
+      });
+      if (error) throw error;
+      uploadedPaths.push(destination);
+    }
+
+    const relativeIndex = normalizeZipPath(indexEntry, rootPrefix);
+    const indexPath = `${baseFolder}${relativeIndex}`;
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(indexPath);
+
+    return {
+      indexPath,
+      indexUrl: urlData.publicUrl,
+      basePath: baseFolder,
+      uploadedFiles: uploadedPaths.length
+    };
+  } catch (error) {
+    if (uploadedPaths.length) {
+      try {
+        await supabase.storage.from(bucket).remove(uploadedPaths);
+      } catch (cleanupError) {
+        console.warn('Failed cleaning up partial WebGL upload', cleanupError);
+      }
+    }
+    console.error('Error uploading WebGL build:', error);
+    throw error;
+  }
+}
+
 async function createThumbnail(file: File, maxWidth: number): Promise<File> {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
@@ -175,6 +284,18 @@ export async function listAllInPrefix(prefix: string) {
   }
   await listDir(prefix.replace(/^\/+|\/+$|^\.+/g, ''));
   return results;
+}
+
+export async function deleteStoragePrefix(prefix: string): Promise<number> {
+  const bucket = 'project-files';
+  const normalized = prefix.replace(/^\/+|\/+$/g, '');
+  const entries = await listAllInPrefix(normalized);
+  if (!entries.length) return 0;
+  const { error } = await supabase.storage.from(bucket).remove(entries.map((e) => e.path));
+  if (error) {
+    throw error;
+  }
+  return entries.length;
 }
 
 export async function listProjectStorage(projectId: string) {

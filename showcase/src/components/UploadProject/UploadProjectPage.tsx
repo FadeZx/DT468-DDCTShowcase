@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
 import { Plus, X, Users, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star, MoveUp, MoveDown } from 'lucide-react';
 import { TagPicker } from '../TagPicker';
-import { uploadProjectFile, deleteProjectFile } from '../../utils/fileStorage';
+import { uploadProjectFile, deleteProjectFile, uploadWebGLBuildFromZip, deleteStoragePrefix } from '../../utils/fileStorage';
 
 interface UploadProjectPageProps {
   currentUser?: any;
@@ -73,7 +73,7 @@ export default function UploadProjectPage({
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const projectInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingMedia, setPendingMedia] = useState<PendingMediaItem[]>([]);
-  const [pendingDocs, setPendingDocs] = useState<Array<{ id: string; file: File; type: 'project'|'document' }>>([]);
+  const [pendingDocs, setPendingDocs] = useState<Array<{ id: string; file: File; type: 'project'|'document'; isWebGL?: boolean }>>([]);
   const [videoUrl, setVideoUrl] = useState('');
   // Removed global make-cover toggle; cover is chosen per-image in previews
 
@@ -267,6 +267,14 @@ export default function UploadProjectPage({
         const isVideo = (f.type || '').startsWith('video/');
         if (isImage || isVideo) next.push({ id, kind: 'file', file: f, type: isImage ? 'image' : 'video', isCover: false });
       }
+      // Auto-mark the first image as cover if none selected yet
+      const hasCover = next.some(item => isFileMedia(item) && item.type === 'image' && item.isCover);
+      if (!hasCover) {
+        const firstImageIndex = next.findIndex(item => isFileMedia(item) && item.type === 'image');
+        if (firstImageIndex >= 0) {
+          next[firstImageIndex] = { ...(next[firstImageIndex] as any), isCover: true };
+        }
+      }
       return next;
     });
     setPendingDocs(prev => {
@@ -278,7 +286,8 @@ export default function UploadProjectPage({
         const extMatch = (f.name || '').toLowerCase().match(/\.(zip|rar|7z|exe|app|dmg|tar|gz)$/);
         const type = extMatch ? 'project' : 'document';
         const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        next.push({ id, file: f, type });
+        const looksWebGL = Boolean(extMatch && /webgl|unity/i.test(f.name));
+        next.push({ id, file: f, type, isWebGL: looksWebGL || undefined });
       }
       return next;
     });
@@ -371,11 +380,39 @@ export default function UploadProjectPage({
       }
     }
     if (coverChosenPath) await supabase.from('projects').update({ cover_image: coverChosenPath }).eq('id', pid);
+    let createdOffset = 0;
     for (let idx = 0; idx < pendingDocs.length; idx++) {
       const d = pendingDocs[idx];
+      const willTryWebGL = (d.file.name || '').toLowerCase().endsWith('.zip');
+      if (willTryWebGL) {
+        try {
+          const webglUpload = await uploadWebGLBuildFromZip({ projectId: pid, zipFile: d.file });
+          if (webglUpload) {
+            const webglRowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            const created = new Date(baseTime + pendingMedia.length + idx + createdOffset).toISOString();
+            const webglRow: any = {
+              id: webglRowId,
+              project_id: pid,
+              file_name: `${d.file.name.replace(/\\.zip$/i, '')} (WebGL)`,
+              file_url: webglUpload.indexUrl,
+              file_path: webglUpload.indexPath,
+              file_type: 'webgl',
+              file_size: d.file.size,
+              mime_type: 'text/html',
+              is_cover: false,
+              created_at: created
+            };
+            await supabase.from('project_files').insert([webglRow]);
+            createdOffset += 1;
+          }
+        } catch (err) {
+          console.warn('WebGL upload failed, keeping raw archive only', err);
+        }
+      }
+
       const res = await uploadProjectFile({ projectId: pid, fileType: d.type, file: d.file, generateThumbnail: false });
       const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-      const created = new Date(baseTime + pendingMedia.length + idx).toISOString();
+      const created = new Date(baseTime + pendingMedia.length + idx + createdOffset).toISOString();
       const row: any = {
         id: rowId,
         project_id: pid,
@@ -389,6 +426,7 @@ export default function UploadProjectPage({
         created_at: created
       };
       await supabase.from('project_files').insert([row]);
+      createdOffset += 1;
     }
     setPendingMedia([]);
     setPendingDocs([]);
@@ -416,7 +454,16 @@ export default function UploadProjectPage({
     const f = files.find(x => x.id === fileId);
     if (!f) return;
     try {
-      await deleteProjectFile(f.file_path);
+      if (f.file_type === 'webgl' && f.file_path) {
+        const folderPrefix = f.file_path.includes('/') ? f.file_path.slice(0, f.file_path.lastIndexOf('/') + 1) : '';
+        if (folderPrefix) {
+          await deleteStoragePrefix(folderPrefix);
+        } else {
+          await deleteProjectFile(f.file_path);
+        }
+      } else if (f.file_path) {
+        await deleteProjectFile(f.file_path);
+      }
       await supabase.from('project_files').delete().eq('id', fileId);
       await refreshFiles(pid);
     } catch {
@@ -449,6 +496,12 @@ export default function UploadProjectPage({
     });
   };
 
+  const categoryIsMissing = useMemo(() => {
+    if (!category.trim()) return true;
+    if (category === 'Others' && !customCategory.trim()) return true;
+    return false;
+  }, [category, customCategory]);
+
   const handleSaveProject = async () => {
     if (!currentUser) {
       alert('You must be logged in to save a project');
@@ -456,6 +509,10 @@ export default function UploadProjectPage({
     }
     if (!title.trim()) {
       alert('Title is required');
+      return;
+    }
+    if (categoryIsMissing) {
+      alert('Category is required');
       return;
     }
 
@@ -623,8 +680,14 @@ export default function UploadProjectPage({
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
-                <select className="w-full border rounded-md h-9 px-2 bg-background" value={category} onChange={(e) => setCategory(e.target.value)}>
+                <label className="block text-sm font-medium mb-1">Category <span className="text-red-500">*</span></label>
+                <select
+                  className="w-full border rounded-md h-9 px-2 bg-background"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  aria-invalid={categoryIsMissing}
+                  required
+                >
                   <option value="">Select category</option>
                   <option value="Art">Art</option>
                   <option value="Animation">Animation</option>
@@ -637,6 +700,9 @@ export default function UploadProjectPage({
                     <label className="block text-xs text-muted-foreground mb-1">Specify category</label>
                     <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
                   </div>
+                )}
+                {categoryIsMissing && (
+                  <p className="text-xs text-red-500 mt-1">Category is required</p>
                 )}
               </div>
             </div>
@@ -848,23 +914,28 @@ export default function UploadProjectPage({
                     <div className="flex-1 min-w-0">
                       <div className="truncate text-sm font-medium">{d.file.name}</div>
                       <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
+                      {(d.isWebGL || (d.file.name || '').toLowerCase().endsWith('.zip')) && (
+                        <div className="text-[10px] text-blue-600 font-semibold">WebGL zip detected - will be playable on the project page</div>
+                      )}
                     </div>
                     <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
                   </div>
                 ))}
-                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).map((f) => (
+                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document' || f.file_type === 'webgl')).map((f) => (
                   <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
                     <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
                       <FileText className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="truncate text-sm font-medium">{f.file_name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{f.mime_type} - {(f.file_size || 0).toLocaleString()} bytes</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {f.file_type === 'webgl' ? 'WebGL build (playable)' : f.mime_type || 'file'} - {(f.file_size || 0).toLocaleString()} bytes
+                      </div>
                     </div>
                     <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
                   </div>
                 ))}
-                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document')).length === 0 && (
+                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document' || f.file_type === 'webgl')).length === 0 && (
                   <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
                 )}
               </div>

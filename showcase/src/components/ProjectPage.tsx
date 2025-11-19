@@ -35,6 +35,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   const [activeTab, setActiveTab] = useState('overview');
   const [projectFiles, setProjectFiles] = useState<any[]>(project.media?.all || project.media || []);
   const [loading, setLoading] = useState(!(project.media?.all?.length || project.media?.length));
+  const [webglUrls, setWebglUrls] = useState<Record<string, string>>({});
   // Ensure we start at the top when entering the project page
   useEffect(() => {
     try {
@@ -221,6 +222,51 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   }, [mediaFilesSorted]);
 
   const [galleryMedia, setGalleryMedia] = useState<GalleryMediaItem[]>(baseGalleryMedia);
+  const webglFiles = useMemo(() => {
+    return projectFiles.filter((file) => {
+      if (file.file_type === 'webgl') return true;
+      const name = String(file.file_name || '').toLowerCase();
+      const path = String(file.file_path || '').toLowerCase();
+      const looksWebglArchive = file.file_type === 'project' && (name.includes('webgl') || path.includes('/webgl/'));
+      return looksWebglArchive;
+    });
+  }, [projectFiles]);
+  const webglKey = (file: any) => String(file?.id || file?.file_path || file?.file_url || '');
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveWebgl = async () => {
+      const resolved: Record<string, string> = {};
+      for (const file of webglFiles) {
+        const key = webglKey(file);
+        if (!key) continue;
+        try {
+          const path = file.file_path as string | undefined;
+          let url = '';
+          if (path && (path.startsWith('projects/') || path.startsWith('external:') || path.startsWith('public/'))) {
+            url = await getBestFileUrl(String(path), 7200);
+          } else if (file.file_url) {
+            url = String(file.file_url);
+          }
+          if (url) {
+            resolved[key] = url;
+          }
+        } catch (error) {
+          console.warn('[ProjectPage] Failed to resolve WebGL URL', error);
+        }
+      }
+      if (!cancelled) {
+        setWebglUrls(resolved);
+      }
+    };
+    resolveWebgl();
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, webglFiles.map((f) => `${f.id || f.file_path || f.file_url || ''}`).join('|')]);
+
+  const primaryWebglFile = webglFiles[0];
+  const primaryWebglUrl = primaryWebglFile ? webglUrls[webglKey(primaryWebglFile)] : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -298,6 +344,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   const downloadableFiles = projectFiles.filter(file => 
     file.file_type === 'project' || file.file_type === 'document'
   );
+  const hasFilesTabContent = downloadableFiles.length > 0 || webglFiles.length > 0;
   const handleDownload = async (file: any) => {
     try {
       let url = '';
@@ -520,6 +567,34 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 mt-6">
+              {primaryWebglFile && primaryWebglUrl && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Play In Browser</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <AspectRatio ratio={16 / 9}>
+                      <iframe
+                        src={primaryWebglUrl}
+                        title="WebGL Build"
+                        allow="fullscreen; xr-spatial-tracking; gamepad; gyroscope; accelerometer"
+                        allowFullScreen
+                        className="w-full h-full rounded-md border"
+                      />
+                    </AspectRatio>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground gap-3">
+                      <span className="truncate">{primaryWebglFile.file_name || 'WebGL Build'}</span>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={primaryWebglUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Open in new tab
+                        </a>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card>
                 <CardHeader>
                   <CardTitle>About This Project</CardTitle>
@@ -590,40 +665,77 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               </Card>
             </TabsContent>
 
-
             <TabsContent value="files" className="mt-6">
               {loading ? (
                 <div className="text-center py-8">
                   <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                   <p className="text-sm text-muted-foreground">Loading files...</p>
                 </div>
-              ) : downloadableFiles.length > 0 ? (
-                <div className="space-y-3">
-                  {downloadableFiles.map((file, index) => (
-                    <Card key={index}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{file.file_name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {file.file_type} • {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>
-  <Download className="w-4 h-4 mr-2" />
-  Download
-</Button>
-                        </div>
+              ) : (
+                <div className="space-y-4">
+                  {webglFiles.length > 0 && (
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Playable Builds</CardTitle>
+                        <p className="text-sm text-muted-foreground">Launch WebGL builds directly in your browser.</p>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {webglFiles.map((file, index) => {
+                          const key = webglKey(file);
+                          const url = webglUrls[key];
+                          return (
+                            <div key={file.id || index} className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{file.file_name || 'WebGL Build'}</p>
+                                <p className="text-sm text-muted-foreground">Playable in browser</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" asChild disabled={!url}>
+                                  <a href={url || '#'} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Open
+                                  </a>
+                                </Button>
+                                {primaryWebglFile && file.id === primaryWebglFile.id && (
+                                  <Badge variant="secondary">Shown in overview</Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </CardContent>
                     </Card>
-                  ))}
+                  )}
+
+                  {downloadableFiles.length > 0 ? (
+                    <div className="space-y-3">
+                      {downloadableFiles.map((file, index) => (
+                        <Card key={index}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{file.file_name}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {file.file_type} - {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
+                                </p>
+                              </div>
+                              <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : webglFiles.length === 0 ? (
+                    <Card>
+                      <CardContent className="text-center py-8">
+                        <p className="text-muted-foreground">No downloadable files available for this project.</p>
+                      </CardContent>
+                    </Card>
+                  ) : null}
                 </div>
-              ) : (
-                <Card>
-                  <CardContent className="text-center py-8">
-                    <p className="text-muted-foreground">No downloadable files available for this project.</p>
-                  </CardContent>
-                </Card>
               )}
             </TabsContent>
 
@@ -672,10 +784,10 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               )}
               
               <div className="grid grid-cols-2 gap-3">
-                {downloadableFiles.length > 0 && (
+                {hasFilesTabContent && (
                   <Button variant="outline" size="sm" onClick={() => setActiveTab('files')}>
                     <Download className="mr-2 h-4 w-4" />
-                    Files ({downloadableFiles.length})
+                    Files ({downloadableFiles.length + webglFiles.length})
                   </Button>
                 )}
               </div>
@@ -824,6 +936,8 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     </div>
   );
 }
+
+
 
 
 

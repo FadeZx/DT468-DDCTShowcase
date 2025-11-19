@@ -32,14 +32,43 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const project = projects.find(p => p.id === projectId);
+  const [fallbackProject, setFallbackProject] = useState<any | null>(null);
+  const [loadingProject, setLoadingProject] = useState(false);
+  const project = projects.find(p => p.id === projectId) || fallbackProject;
 
-  useEffect(() => { if (project) onReady?.(project.id); }, []);
+  // Fetch project on demand if not in memory (e.g., after redirect immediately after create)
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!projectId || project) return;
+      setLoadingProject(true);
+      try {
+        const { data: proj } = await supabase.from('projects').select('*').eq('id', projectId).single();
+        if (!active || !proj) return;
+        const { data: files } = await supabase.from('project_files').select('*').eq('project_id', projectId);
+        setFallbackProject({
+          ...proj,
+          media: { all: files || [] },
+          author: { id: proj.owner_id, name: 'Unknown', avatar: null },
+          members: [],
+          stats: { views: Number((proj as any).views) || 0, downloads: Number((proj as any).downloads) || 0, likes: 0 },
+          cover_image: proj.cover_image || '',
+          visibility: proj.visibility || 'unlisted',
+        });
+      } finally {
+        if (active) setLoadingProject(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, [projectId, project]);
+
+  useEffect(() => { if (project) onReady?.(project.id); }, [project?.id]);
 
   if (!project) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <p className="text-center">Project not found</p>
+        <p className="text-center">{loadingProject ? 'Loading project…' : 'Project not found'}</p>
       </div>
     );
   }
