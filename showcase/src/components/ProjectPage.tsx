@@ -14,9 +14,38 @@ import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
 import { ProjectComments } from './ProjectComments';
-import { getDownloadUrl, getBestFileUrl } from '../utils/fileStorage';
+import { getDownloadUrl, getBestFileUrl, getInlineFileUrl } from '../utils/fileStorage';
 import { useProjectLikes } from '../hooks/useProjectLikes';
 
+const FILE_CONTENT_LABELS: Record<string, string> = {
+  download: 'Download',
+  executable: 'Executable',
+  soundtrack: 'Soundtrack',
+  source: 'Source code',
+  document: 'Book / Document',
+  video: 'Video',
+  mod: 'Mod',
+  graphics: 'Graphical assets',
+  audio: 'Audio assets',
+  instructions: 'Documentation / Instructions'
+};
+const getBaseFileType = (value?: string | null) => {
+  if (!value) return '';
+  const [base] = value.split(':');
+  return base || value;
+};
+const getContentKind = (value?: string | null) => {
+  if (!value) return null;
+  const [, kind] = value.split(':');
+  return kind || null;
+};
+const formatContentLabel = (value?: string | null) => {
+  const kind = getContentKind(value);
+  if (kind) return FILE_CONTENT_LABELS[kind] || FILE_CONTENT_LABELS.download;
+  const base = getBaseFileType(value);
+  if (base === 'document') return FILE_CONTENT_LABELS.document;
+  return FILE_CONTENT_LABELS.download;
+};
 
 
 type GalleryMediaItem = { type: 'image' | 'video'; url: string; name?: string; thumb?: string };
@@ -223,13 +252,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
 
   const [galleryMedia, setGalleryMedia] = useState<GalleryMediaItem[]>(baseGalleryMedia);
   const webglFiles = useMemo(() => {
-    return projectFiles.filter((file) => {
-      if (file.file_type === 'webgl') return true;
-      const name = String(file.file_name || '').toLowerCase();
-      const path = String(file.file_path || '').toLowerCase();
-      const looksWebglArchive = file.file_type === 'project' && (name.includes('webgl') || path.includes('/webgl/'));
-      return looksWebglArchive;
-    });
+    return projectFiles.filter((file) => getBaseFileType(file.file_type) === 'webgl');
   }, [projectFiles]);
   const webglKey = (file: any) => String(file?.id || file?.file_path || file?.file_url || '');
 
@@ -244,7 +267,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
           const path = file.file_path as string | undefined;
           let url = '';
           if (path && (path.startsWith('projects/') || path.startsWith('external:') || path.startsWith('public/'))) {
-            url = await getBestFileUrl(String(path), 7200);
+            url = await getInlineFileUrl(String(path), 7200);
           } else if (file.file_url) {
             url = String(file.file_url);
           }
@@ -341,9 +364,10 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
   }, [project.id, galleryMedia.length]);
 
   // Get downloadable files
-  const downloadableFiles = projectFiles.filter(file => 
-    file.file_type === 'project' || file.file_type === 'document'
-  );
+  const downloadableFiles = projectFiles.filter(file => {
+    const base = getBaseFileType(file.file_type);
+    return base === 'project' || base === 'document';
+  });
   const hasFilesTabContent = downloadableFiles.length > 0 || webglFiles.length > 0;
   const handleDownload = async (file: any) => {
     try {
@@ -716,7 +740,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                               <div>
                                 <p className="font-medium">{file.file_name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {file.file_type} - {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
+                                  {formatContentLabel(file.file_type)} - {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
                                 </p>
                               </div>
                               <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>

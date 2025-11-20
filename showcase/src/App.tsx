@@ -46,10 +46,12 @@ function ProjectPageWrapper({ projects, currentUser, onEditProject, onDeleteProj
         const { data: proj } = await supabase.from('projects').select('*').eq('id', projectId).single();
         if (!active || !proj) return;
         const { data: files } = await supabase.from('project_files').select('*').eq('project_id', projectId);
+        const ownerId = proj.owner_id || proj.author_id;
         setFallbackProject({
           ...proj,
+          author_id: ownerId,
           media: { all: files || [] },
-          author: { id: proj.owner_id, name: 'Unknown', avatar: null },
+          author: { id: ownerId, name: 'Unknown', avatar: null },
           members: [],
           stats: { views: Number((proj as any).views) || 0, downloads: Number((proj as any).downloads) || 0, likes: 0 },
           cover_image: proj.cover_image || '',

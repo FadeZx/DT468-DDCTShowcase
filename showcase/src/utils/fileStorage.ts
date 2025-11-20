@@ -4,7 +4,7 @@ import supabase from './supabase/client';
 
 export interface FileUploadOptions {
   projectId: string;
-  fileType: 'image' | 'video' | 'document' | 'project' | 'thumbnail' | 'export';
+  fileType: string;
   file: File;
   generateThumbnail?: boolean;
 }
@@ -26,7 +26,8 @@ export function generateFilePath(
   fileId: string,
   extension: string
 ): string {
-  switch (fileType) {
+  const normalized = fileType.includes(':') ? fileType.split(':')[0] : fileType;
+  switch (normalized) {
     case 'image':
       return `projects/${projectId}/images/originals/${fileId}.${extension}`;
     case 'video':
@@ -162,23 +163,26 @@ function normalizeZipPath(path: string, rootPrefix: string) {
   return safeParts.join('/');
 }
 
-async function detectWebGLZip(zipFile: File) {
+async function detectWebGLZip(zipFile: File, force = false) {
   if (!zipFile.name.toLowerCase().endsWith('.zip')) return null;
   const zip = await JSZip.loadAsync(zipFile);
   const entryNames = Object.keys(zip.files);
-  const indexEntry = entryNames.find((name) => !zip.files[name].dir && name.toLowerCase().endsWith('index.html'));
+  let indexEntry = entryNames.find((name) => !zip.files[name].dir && name.toLowerCase().endsWith('index.html'));
+  if (!indexEntry && force) {
+    indexEntry = entryNames.find((name) => !zip.files[name].dir && name.toLowerCase().endsWith('.html'));
+  }
   if (!indexEntry) return null;
   const hasRuntime = entryNames.some((name) => {
     const lower = name.toLowerCase();
     return lower.endsWith('.wasm') || lower.endsWith('.data') || lower.endsWith('.unityweb') || lower.includes('/build/');
   });
-  if (!hasRuntime) return null;
+  if (!hasRuntime && !force) return null;
   const rootPrefix = indexEntry.includes('/') ? indexEntry.slice(0, indexEntry.lastIndexOf('/') + 1) : '';
   return { zip, indexEntry, rootPrefix };
 }
 
-export async function uploadWebGLBuildFromZip(params: { projectId: string; zipFile: File; folderName?: string; }) {
-  const detection = await detectWebGLZip(params.zipFile);
+export async function uploadWebGLBuildFromZip(params: { projectId: string; zipFile: File; folderName?: string; force?: boolean; }) {
+  const detection = await detectWebGLZip(params.zipFile, params.force);
   if (!detection) return null;
 
   const { zip, indexEntry, rootPrefix } = detection;
@@ -343,6 +347,25 @@ export async function getBestFileUrl(filePath: string, expiresInSeconds = 3600):
   } catch {}
   const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return data.publicUrl;
+}
+
+export async function getInlineFileUrl(filePath: string, expiresInSeconds = 3600): Promise<string> {
+  const bucket = 'project-files';
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      // @ts-ignore optional download param
+      .createSignedUrl(filePath, expiresInSeconds, { download: false });
+    if (!error && data?.signedUrl) return data.signedUrl;
+  } catch {}
+  try {
+    const { data } = supabase.storage
+      .from(bucket)
+      // @ts-ignore optional download param
+      .getPublicUrl(filePath, { download: false });
+    if (data?.publicUrl) return data.publicUrl;
+  } catch {}
+  return getBestFileUrl(filePath, expiresInSeconds);
 }
 
 // Prefer URLs that instruct the browser to download (Content-Disposition)

@@ -10,6 +10,58 @@ import { Plus, X, Users, Hash, Upload as UploadIcon, Image as ImageIcon, FileTex
 import { TagPicker } from '../TagPicker';
 import { uploadProjectFile, deleteProjectFile, uploadWebGLBuildFromZip, deleteStoragePrefix } from '../../utils/fileStorage';
 
+const FILE_CONTENT_OPTIONS = [
+  { value: 'download', label: 'Download' },
+  { value: 'executable', label: 'Executable' },
+  { value: 'soundtrack', label: 'Soundtrack' },
+  { value: 'source', label: 'Source code' },
+  { value: 'document', label: 'Book or Document' },
+  { value: 'video', label: 'Video' },
+  { value: 'mod', label: 'Mod' },
+  { value: 'graphics', label: 'Graphical assets' },
+  { value: 'audio', label: 'Audio assets' },
+  { value: 'instructions', label: 'Documentation / Instructions' },
+] as const;
+type FileContentKind = typeof FILE_CONTENT_OPTIONS[number]['value'];
+const FILE_CONTENT_LABEL_MAP: Record<FileContentKind, string> = FILE_CONTENT_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {} as Record<FileContentKind, string>);
+const DEFAULT_FILE_CONTENT: FileContentKind = 'download';
+
+const getBaseFileType = (value?: string | null) => {
+  if (!value) return '';
+  const [base] = value.split(':');
+  return base || value;
+};
+const getContentKindFromStored = (value?: string | null): FileContentKind | null => {
+  if (!value) return null;
+  const [, kind] = value.split(':');
+  return (kind as FileContentKind) || null;
+};
+
+const guessContentKind = (file: File): FileContentKind => {
+  const name = (file.name || '').toLowerCase();
+  if (name.endsWith('.zip') || name.endsWith('.exe')) return 'executable';
+  if (name.endsWith('.mp3') || name.endsWith('.wav') || name.endsWith('.flac')) return 'audio';
+  if (name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.avi') || name.endsWith('.webm')) return 'video';
+  if (name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx')) return 'document';
+  if (name.includes('source')) return 'source';
+  if (name.includes('soundtrack')) return 'soundtrack';
+  if (name.includes('instructions') || name.includes('readme')) return 'instructions';
+  return DEFAULT_FILE_CONTENT;
+};
+
+const supportsBrowserPlay = (file: File) => {
+  const lower = (file.name || '').toLowerCase();
+  return lower.endsWith('.zip');
+};
+
+const looksLikeWebGLName = (file: File) => {
+  const lower = (file.name || '').toLowerCase();
+  return /(webgl|html5|unity)/i.test(lower);
+};
+
 interface UploadProjectPageProps {
   currentUser?: any;
   projectId?: string;
@@ -43,6 +95,15 @@ type UrlPendingMediaItem = {
 
 type PendingMediaItem = FilePendingMediaItem | UrlPendingMediaItem;
 
+type PendingDocItem = {
+  id: string;
+  file: File;
+  type: 'project' | 'document';
+  contentKind: FileContentKind;
+  playInBrowser: boolean;
+  autoPlayable: boolean;
+};
+
 export default function UploadProjectPage({
   currentUser,
   projectId: editProjectId,
@@ -73,7 +134,7 @@ export default function UploadProjectPage({
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const projectInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingMedia, setPendingMedia] = useState<PendingMediaItem[]>([]);
-  const [pendingDocs, setPendingDocs] = useState<Array<{ id: string; file: File; type: 'project'|'document'; isWebGL?: boolean }>>([]);
+  const [pendingDocs, setPendingDocs] = useState<PendingDocItem[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
   // Removed global make-cover toggle; cover is chosen per-image in previews
 
@@ -286,8 +347,17 @@ export default function UploadProjectPage({
         const extMatch = (f.name || '').toLowerCase().match(/\.(zip|rar|7z|exe|app|dmg|tar|gz)$/);
         const type = extMatch ? 'project' : 'document';
         const id = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        const looksWebGL = Boolean(extMatch && /webgl|unity/i.test(f.name));
-        next.push({ id, file: f, type, isWebGL: looksWebGL || undefined });
+        const contentKind = guessContentKind(f);
+        const supportsPlay = supportsBrowserPlay(f);
+        const autoPlayable = supportsPlay && looksLikeWebGLName(f);
+        next.push({
+          id,
+          file: f,
+          type,
+          contentKind,
+          playInBrowser: autoPlayable,
+          autoPlayable
+        });
       }
       return next;
     });
@@ -383,10 +453,11 @@ export default function UploadProjectPage({
     let createdOffset = 0;
     for (let idx = 0; idx < pendingDocs.length; idx++) {
       const d = pendingDocs[idx];
-      const willTryWebGL = (d.file.name || '').toLowerCase().endsWith('.zip');
-      if (willTryWebGL) {
+      const canPlay = d.playInBrowser && supportsBrowserPlay(d.file);
+      let processedWebgl = false;
+      if (canPlay) {
         try {
-          const webglUpload = await uploadWebGLBuildFromZip({ projectId: pid, zipFile: d.file });
+          const webglUpload = await uploadWebGLBuildFromZip({ projectId: pid, zipFile: d.file, force: true });
           if (webglUpload) {
             const webglRowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
             const created = new Date(baseTime + pendingMedia.length + idx + createdOffset).toISOString();
@@ -404,13 +475,19 @@ export default function UploadProjectPage({
             };
             await supabase.from('project_files').insert([webglRow]);
             createdOffset += 1;
+            processedWebgl = true;
           }
         } catch (err) {
           console.warn('WebGL upload failed, keeping raw archive only', err);
         }
       }
 
-      const res = await uploadProjectFile({ projectId: pid, fileType: d.type, file: d.file, generateThumbnail: false });
+      if (processedWebgl) {
+        continue;
+      }
+
+      const storedFileType = `${d.type}${d.contentKind ? `:${d.contentKind}` : ''}`;
+      const res = await uploadProjectFile({ projectId: pid, fileType: storedFileType, file: d.file, generateThumbnail: false });
       const rowId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
       const created = new Date(baseTime + pendingMedia.length + idx + createdOffset).toISOString();
       const row: any = {
@@ -419,7 +496,7 @@ export default function UploadProjectPage({
         file_name: d.file.name,
         file_url: res.fileUrl,
         file_path: res.filePath,
-        file_type: d.type,
+        file_type: storedFileType,
         file_size: d.file.size,
         mime_type: d.file.type,
         is_cover: false,
@@ -906,22 +983,56 @@ export default function UploadProjectPage({
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {pendingDocs.map(d => (
-                  <div key={d.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                    <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate text-sm font-medium">{d.file.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
-                      {(d.isWebGL || (d.file.name || '').toLowerCase().endsWith('.zip')) && (
-                        <div className="text-[10px] text-blue-600 font-semibold">WebGL zip detected - will be playable on the project page</div>
+                {pendingDocs.map(d => {
+                  const supportsPlay = supportsBrowserPlay(d.file);
+                  return (
+                    <div key={d.id} className="p-3 border rounded-md bg-background space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-sm font-medium">{d.file.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
+                        </div>
+                        <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-semibold mb-1">File content</label>
+                          <select
+                            className="w-full border rounded-md h-9 px-2 bg-background"
+                            value={d.contentKind}
+                            onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, contentKind: e.target.value as FileContentKind } : item))}
+                          >
+                            {FILE_CONTENT_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={d.playInBrowser && supportsPlay}
+                              disabled={!supportsPlay}
+                              onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, playInBrowser: supportsPlay ? e.target.checked : false } : item))}
+                            />
+                            <span>This file will be played in the browser</span>
+                          </label>
+                        </div>
+                      </div>
+                      {!supportsPlay && (
+                        <p className="text-xs text-muted-foreground">Only ZIP or HTML files can run in the browser.</p>
+                      )}
+                      {d.playInBrowser && !supportsPlay && (
+                        <p className="text-xs text-red-500">Enable browser play only for WebGL-ready ZIP/HTML files.</p>
                       )}
                     </div>
-                    <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
-                  </div>
-                ))}
-                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document' || f.file_type === 'webgl')).map((f) => (
+                  );
+                })}
+                {(files.filter(f => ['project', 'document', 'webgl'].includes(getBaseFileType(f.file_type)))).map((f) => (
                   <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
                     <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
                       <FileText className="w-5 h-5" />
@@ -929,13 +1040,15 @@ export default function UploadProjectPage({
                     <div className="flex-1 min-w-0">
                       <div className="truncate text-sm font-medium">{f.file_name}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {f.file_type === 'webgl' ? 'WebGL build (playable)' : f.mime_type || 'file'} - {(f.file_size || 0).toLocaleString()} bytes
+                        {f.file_type === 'webgl'
+                          ? 'WebGL build (playable)'
+                          : `${FILE_CONTENT_LABEL_MAP[getContentKindFromStored(f.file_type) || (getBaseFileType(f.file_type) === 'document' ? 'document' : DEFAULT_FILE_CONTENT)]} • ${f.mime_type || 'file'}`} - {(f.file_size || 0).toLocaleString()} bytes
                       </div>
                     </div>
                     <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
                   </div>
                 ))}
-                {(files.filter(f => f.file_type === 'project' || f.file_type === 'document' || f.file_type === 'webgl')).length === 0 && (
+                {(files.filter(f => ['project', 'document', 'webgl'].includes(getBaseFileType(f.file_type)))).length === 0 && pendingDocs.length === 0 && (
                   <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
                 )}
               </div>
