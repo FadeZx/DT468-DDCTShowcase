@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { ProjectCard } from './ProjectCard';
-import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Calendar, Users, Trophy, ArrowRight } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
@@ -125,14 +124,14 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <Card className="text-center">
+          <Card className="text-center bg-transparent border-0 shadow-none">
             <CardContent className="p-6">
               <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
               <div className="text-2xl font-bold">{projects.length}</div>
               <div className="text-muted-foreground">Total Projects</div>
             </CardContent>
           </Card>
-          <Card className="text-center">
+          <Card className="text-center bg-transparent border-0 shadow-none">
             <CardContent className="p-6">
               <Users className="w-8 h-8 text-primary mx-auto mb-2" />
               <div className="text-2xl font-bold">
@@ -141,7 +140,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
               <div className="text-muted-foreground">Active Students</div>
             </CardContent>
           </Card>
-          <Card className="text-center">
+          <Card className="text-center bg-transparent border-0 shadow-none">
             <CardContent className="p-6">
               <Calendar className="w-8 h-8 text-primary mx-auto mb-2" />
               <div className="text-2xl font-bold">{upcomingEvents.length}</div>
@@ -164,9 +163,9 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
               {categories.map((category) => (
                 <TabsTrigger key={category.id} value={category.id} className="text-xs">
                   {category.name}
-                  <Badge variant="secondary" className="ml-2">
+                  <span className="ml-2 text-muted-foreground text-xs font-medium">
                     {category.count}
-                  </Badge>
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>

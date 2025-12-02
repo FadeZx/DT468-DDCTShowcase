@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { Search, User, Settings, LogOut, BarChart3, Upload } from 'lucide-react';
+import { Search, User, Settings, LogOut, BarChart3, Upload, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
   currentUser: any;
@@ -15,6 +15,21 @@ interface HeaderProps {
 export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    const stored = window.localStorage.getItem('theme');
+    return stored === 'dark' ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    window.localStorage.setItem('theme', theme);
+  }, [theme]);
 
   return (
     <header className="bg-card border-b border-border px-6 py-4">
@@ -67,6 +82,21 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
 
         {/* User Actions */}
         <div className="flex items-center gap-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-pressed={theme === 'dark'}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="border border-border"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </Button>
+
           {currentUser?.role === 'student' && (
             <Link to="/upload">
               <Button 
