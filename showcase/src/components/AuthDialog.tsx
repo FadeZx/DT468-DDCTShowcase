@@ -5,14 +5,14 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
-import { AlertCircle, Shield, GraduationCap, User } from 'lucide-react';
+import { AlertCircle, Shield, GraduationCap, User, Handshake } from 'lucide-react';
 
 interface AuthDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSignedIn: (profile: any) => void;
   signInWithEmail: (email: string, password: string) => Promise<any>;
-  quickLoginEmails: { admin: string; student1: string; student2: string };
+  quickLoginEmails: { admin: string; student1: string; student2: string; partner: string };
 }
 
 export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quickLoginEmails }: AuthDialogProps) {
@@ -38,15 +38,13 @@ export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quick
     }
   };
 
-  const handleQuick = async (role: 'admin' | 'student1' | 'student2') => {
+  const handleQuick = async (role: 'admin' | 'student1' | 'student2' | 'partner') => {
     setLoading(true);
     setError('');
     try {
       // Default seed passwords we will create with the seed script
-      const pwd = role === 'admin' ? 'Admin#468' : 'Student#468';
-      const emailToUse = role === 'admin' ? quickLoginEmails.admin : 
-                         role === 'student1' ? quickLoginEmails.student1 : 
-                         quickLoginEmails.student2;
+      const pwd = role === 'admin' ? 'Admin#468' : role === 'partner' ? 'Partner#468' : 'Student#468';
+      const emailToUse = quickLoginEmails[role];
       const profile = await signInWithEmail(emailToUse, pwd);
       onSignedIn(profile);
       onClose();
@@ -89,6 +87,9 @@ export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quick
               </Button>
               <Button onClick={() => handleQuick('student2')} disabled={loading} className="flex items-center gap-2">
                 <GraduationCap className="w-4 h-4" /> Student Two
+              </Button>
+              <Button onClick={() => handleQuick('partner')} disabled={loading} className="flex items-center gap-2">
+                <Handshake className="w-4 h-4" /> Partner
               </Button>
               <Button variant="outline" onClick={onClose} disabled={loading} className="flex items-center gap-2">
                 <User className="w-4 h-4" /> Continue as Guest

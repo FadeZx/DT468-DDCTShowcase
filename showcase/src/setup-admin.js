@@ -103,6 +103,14 @@ async function run() {
     });
     await upsertProfile({ id: student2Id, email: 'student2@ddct.edu.th', name: 'Student Two', role: 'student', year: '2568', bio: '', skills: [] });
 
+    const partnerId = await ensureUser({
+      email: 'partner@ddct.edu.th',
+      password: 'Partner#468',
+      metadata: { name: 'Partner', role: 'partner', year: '' }
+    });
+    // Partners are stored as students without a year so admin filters can show them separately
+    await upsertProfile({ id: partnerId, email: 'partner@ddct.edu.th', name: 'Partner', role: 'partner', year: '', bio: '', skills: [] });
+
     const guestId = await ensureUser({
       email: 'guest@ddct.edu.th',
       password: 'Guest#468',
@@ -114,6 +122,7 @@ async function run() {
     console.log('- admin@ddct.edu.th / Admin#468');
     console.log('- student1@ddct.edu.th / Student#468');
     console.log('- student2@ddct.edu.th / Student#468');
+    console.log('- partner@ddct.edu.th / Partner#468');
     console.log('- guest@ddct.edu.th / Guest#468');
   } catch (e) {
     console.error('Seed failed:', e);

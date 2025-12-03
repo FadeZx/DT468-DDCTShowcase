@@ -33,7 +33,11 @@ async function getAuthenticatedUser(authHeader: string | null) {
     
     // Get user profile from KV store
     const userProfile = await kv.get(`user:${user.id}`);
-    return userProfile || { id: user.id, email: user.email };
+    const metadataRole = (user.user_metadata as any)?.role;
+    if (userProfile) {
+      return { ...userProfile, role: userProfile.role || metadataRole };
+    }
+    return { id: user.id, email: user.email, role: metadataRole };
   } catch (error) {
     console.error('Authentication error:', error);
     return null;
@@ -563,7 +567,7 @@ app.get('/make-server-7d410c83/admin/analytics', async (c) => {
 // Export PDF resume for teachers
 app.get('/make-server-7d410c83/admin/export-resume/:userId', async (c) => {
   const user = await getAuthenticatedUser(c.req.header('Authorization'));
-  if (!user || (user.role !== 'teacher' && user.role !== 'admin')) {
+  if (!user || (user.role !== 'teacher' && user.role !== 'admin' && user.role !== 'partner')) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 

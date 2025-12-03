@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Badge } from '../ui/badge-simple';
 import supabase from '../../utils/supabase/client';
 import { createClient } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom';
 import { 
   Plus, 
   Edit, 
@@ -63,6 +64,7 @@ const getDisplayRole = (user: User): 'student' | 'partner' | 'admin' => {
 // Use app-wide Supabase client instance for regular operations
 
 export function AccountManagement({ onAccountCreated }: AccountManagementProps) {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -620,8 +622,13 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={user.avatar || '/placeholder-avatar.svg'}
+                          alt={user.name}
+                          className="w-12 h-12 rounded-full object-cover"
+                          onError={(e) => { e.currentTarget.src = '/placeholder-avatar.svg'; }}
+                        />
                       </div>
                       
                       <div>
@@ -642,6 +649,15 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                     </div>
                     
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/users/${user.id}`)}
+                        disabled={loading}
+                        className="text-primary"
+                      >
+                        View Profile
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"

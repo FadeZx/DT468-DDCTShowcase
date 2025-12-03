@@ -41,6 +41,8 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     [avatarPreview, editedUser.avatar, user.avatar]
   );
   const displayRole = user.semanticRole || user.role;
+  const viewerRole = ((currentUser?.semanticRole || currentUser?.role || '') as string).toLowerCase();
+  const limitedView = !isOwnProfile && !['admin', 'partner', 'teacher'].includes(viewerRole);
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -51,7 +53,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     hiddenProjects: [],
   });
   
-  const canExportPDF = currentUser?.role === 'teacher' || currentUser?.role === 'admin';
+  const canExportPDF = ['admin', 'partner', 'teacher'].includes(viewerRole);
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)
@@ -148,6 +150,61 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     // Logic to export PDF resume
     console.log('Exporting PDF resume for', user.name);
   };
+
+  if (limitedView) {
+    return (
+      <div className="max-w-5xl mx-auto px-6 py-8 cursor-default select-none">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card>
+            <CardContent className="p-6 text-center">
+              <Avatar className="w-24 h-24 mx-auto mb-3">
+                <AvatarImage src={displayAvatar || undefined} alt={user.name} />
+                <AvatarImage src="/placeholder-avatar.svg" />
+                <AvatarFallback className="text-2xl">{user.name?.[0] || '?'}</AvatarFallback>
+              </Avatar>
+              <h1 className="text-xl font-semibold">{user.name}</h1>
+              <p className="text-sm text-muted-foreground">Student profile</p>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Contact Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {editedUser.email && (
+                <div className="flex items-center gap-3">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm select-text">{editedUser.email}</span>
+                </div>
+              )}
+              {editedUser.location && (
+                <div className="flex items-center gap-3">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm select-text">{editedUser.location}</span>
+                </div>
+              )}
+              {editedUser.joinDate && (
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm select-text">Joined {editedUser.joinDate}</span>
+                </div>
+              )}
+              {!editedUser.email && !editedUser.location && !editedUser.joinDate && (
+                <p className="text-sm text-muted-foreground">No contact details provided.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-3">
+            <CardContent className="p-4 text-center text-sm text-muted-foreground">
+              Additional profile details and projects are visible only to the owner, partners, teachers, or admins.
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 cursor-default select-none" style={{ 

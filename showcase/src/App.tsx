@@ -273,7 +273,7 @@ function UserProfileWrapper({ projects, currentUser, onProjectClick, onNavigate 
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, email, avatar, role, year')
+          .select('id, name, email, avatar, role, year, bio, skills, github, linkedin, portfolio, location, majors')
           .eq('id', userId)
           .single();
         if (error) throw error;
@@ -594,7 +594,7 @@ export default function App() {
   };
 
   // Auth helpers
-  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student1: 'student1@ddct.edu.th', student2: 'student2@ddct.edu.th' };
+  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student1: 'student1@ddct.edu.th', student2: 'student2@ddct.edu.th', partner: 'partner@ddct.edu.th' };
 
   const ALLOWED_PROFILE_ROLES = ['admin', 'student', 'guest'] as const;
   type AllowedProfileRole = (typeof ALLOWED_PROFILE_ROLES)[number];
