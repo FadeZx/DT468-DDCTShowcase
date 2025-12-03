@@ -124,29 +124,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <Card className="text-center bg-transparent border-0 shadow-none">
-            <CardContent className="p-6">
-              <Trophy className="w-8 h-8 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold">{projects.length}</div>
-              <div className="text-muted-foreground">Total Projects</div>
-            </CardContent>
-          </Card>
-          <Card className="text-center bg-transparent border-0 shadow-none">
-            <CardContent className="p-6">
-              <Users className="w-8 h-8 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold">
-                {new Set(projects.map(p => p.author.name)).size}
-              </div>
-              <div className="text-muted-foreground">Active Students</div>
-            </CardContent>
-          </Card>
-          <Card className="text-center bg-transparent border-0 shadow-none">
-            <CardContent className="p-6">
-              <Calendar className="w-8 h-8 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold">{upcomingEvents.length}</div>
-              <div className="text-muted-foreground">Upcoming Events</div>
-            </CardContent>
-          </Card>
+         
         </div>
       </div>
 
