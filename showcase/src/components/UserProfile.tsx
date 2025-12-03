@@ -40,6 +40,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     () => avatarPreview || editedUser.avatar || user.avatar || null,
     [avatarPreview, editedUser.avatar, user.avatar]
   );
+  const displayRole = user.semanticRole || user.role;
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -88,7 +89,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
       // Update profile fields in DB
       const updates: any = {};
       if (editedUser.name !== user.name) updates.name = editedUser.name;
-      if (editedUser.year !== user.year) updates.year = editedUser.year;
+      if (displayRole === 'student' && editedUser.year !== user.year) {
+        updates.year = editedUser.year;
+      }
       if (editedUser.bio !== user.bio) updates.bio = editedUser.bio || null;
       if (Array.isArray(editedUser.skills)) updates.skills = editedUser.skills;
       if (editedUser.email && editedUser.email !== user.email) updates.email = editedUser.email;
@@ -237,11 +240,13 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                     onChange={(e) => setEditedUser({...editedUser, name: e.target.value})}
                     placeholder="Full Name"
                   />
-                  <Input
-                    value={editedUser.year}
-                    onChange={(e) => setEditedUser({...editedUser, year: e.target.value})}
-                    placeholder="Year"
-                  />
+                  {displayRole === 'student' && (
+                    <Input
+                      value={editedUser.year}
+                      onChange={(e) => setEditedUser({ ...editedUser, year: e.target.value })}
+                      placeholder="Year"
+                    />
+                  )}
                   <Textarea
                     value={editedUser.bio || ''}
                     onChange={(e) => setEditedUser({...editedUser, bio: e.target.value})}
@@ -338,9 +343,11 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                 <>
                   <h1 className="text-2xl font-bold mb-2">{user.name}</h1>
                   <p className="text-xs text-muted-foreground -mt-1 mb-2 break-all">ID: {user.id}</p>
-                  <Badge className="mb-4 bg-primary text-primary-foreground">
-                    {user.year} Student
-                  </Badge>
+                  {displayRole === 'student' && (
+                    <Badge className="mb-4 bg-primary text-primary-foreground">
+                      {user.year} Student
+                    </Badge>
+                  )}
                   
                   {user.bio && (
                     <p className="text-muted-foreground mb-4">{user.bio}</p>

@@ -596,10 +596,71 @@ export default function App() {
   // Auth helpers
   const quickLoginEmails = { admin: 'admin@ddct.edu.th', student1: 'student1@ddct.edu.th', student2: 'student2@ddct.edu.th' };
 
+  const ALLOWED_PROFILE_ROLES = ['admin', 'student', 'guest'] as const;
+  type AllowedProfileRole = (typeof ALLOWED_PROFILE_ROLES)[number];
+  const normalizeProfileRole = (role: string | null | undefined): AllowedProfileRole => {
+    const r = (role || '').toLowerCase();
+    if (r === 'admin') return 'admin';
+    if (r === 'student' || r === 'partner' || r === 'teacher') return 'student';
+    return 'guest';
+  };
+
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (error) throw error;
-    return data;
+    // Get current auth user to derive semantic role metadata
+    const { data: userRes } = await supabase.auth.getUser();
+    const authUser = userRes?.user;
+    const rawMetaRole = (authUser?.user_metadata as any)?.role as string | undefined;
+    const semanticRole = typeof rawMetaRole === 'string' ? rawMetaRole : null;
+    const metaYear = (authUser?.user_metadata as any)?.year as string | undefined;
+
+    // Try to load existing profile row
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      return {
+        ...data,
+        // Attach semanticRole for front-end logic (student vs partner vs admin)
+        semanticRole: semanticRole || data.role,
+      };
+    }
+
+    // If no profile row exists yet, build a minimal one from the auth user
+    const dbRole = normalizeProfileRole(semanticRole);
+
+    const baseProfile = {
+      id: userId,
+      email: authUser?.email ?? '',
+      name: (authUser?.user_metadata as any)?.name || authUser?.email || 'Unknown User',
+      role: dbRole,
+      year: dbRole === 'student' ? (metaYear || 'Unknown') : null,
+      avatar: (authUser?.user_metadata as any)?.avatar || null,
+      bio: `Profile for ${authUser?.email || 'DDCT user'}`,
+      skills: [] as string[],
+    };
+
+    const { data: upserted, error: upsertError } = await supabase
+      .from('profiles')
+      .upsert(baseProfile, { onConflict: 'id' })
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (upsertError) {
+      throw upsertError;
+    }
+
+    return {
+      ...upserted,
+      semanticRole: semanticRole || upserted.role,
+    };
   };
 
   const signInWithEmail = async (email: string, password: string) => {
@@ -721,6 +782,8 @@ export default function App() {
     }
   };
 
+  const currentRole = currentUser ? (currentUser.semanticRole || currentUser.role) : undefined;
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header
@@ -808,7 +871,7 @@ export default function App() {
               } />
               
               <Route path="/admin" element={
-                currentUser?.role === 'admin' ? (
+                currentRole === 'admin' ? (
                   <AdminDashboard
                     projects={projects}
                     users={usersState}
@@ -821,7 +884,7 @@ export default function App() {
               } />
               
               <Route path="/upload" element={
-                currentUser?.role === 'student' ? (
+                (currentRole === 'student' || currentRole === 'partner') ? (
                   <UploadProjectPage 
                     currentUser={currentUser}
                     onProjectCreated={loadData}
@@ -834,7 +897,7 @@ export default function App() {
               } />
               
               <Route path="/my-projects" element={
-                currentUser?.role === 'student' ? (
+                (currentRole === 'student' || currentRole === 'partner') ? (
                   <MyProjectsPage
                     currentUser={currentUser}
                     projects={projects}

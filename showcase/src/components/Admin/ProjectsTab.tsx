@@ -6,7 +6,6 @@ import { Badge } from '../ui/badge';
 import { FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SupabaseImage } from '../figma/SupabaseImage';
-import { cleanupOrphanedProjectStorage } from '../../utils/fileStorage';
 
 interface ProjectsTabProps {
   projects: any[];
@@ -14,54 +13,63 @@ interface ProjectsTabProps {
 
 export function ProjectsTab({ projects }: ProjectsTabProps) {
   const navigate = useNavigate();
-  const [cleaning, setCleaning] = useState(false);
+  const [yearFilter, setYearFilter] = useState<string>('all');
 
-  const recentProjects = useMemo(
-    () =>
-      [...projects]
-        .sort(
-          (a, b) =>
-            new Date(b.created_at || b.updated_at || 0).getTime() -
-            new Date(a.created_at || a.updated_at || 0).getTime(),
-        )
-        .slice(0, 5),
-    [projects],
-  );
-
-  const handleCleanStorage = async () => {
-    if (cleaning) return;
-    setCleaning(true);
-    try {
-      const { removed, kept } = await cleanupOrphanedProjectStorage();
-      alert(`Orphaned storage cleanup completed. Removed ${removed} files. Kept ${kept}.`);
-    } catch (e) {
-      console.error('Cleanup failed', e);
-      alert('Storage cleanup failed. See console for details.');
-    } finally {
-      setCleaning(false);
+  const yearOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of projects) {
+      const y = p.author?.year;
+      if (y && typeof y === 'string' && y.trim()) {
+        set.add(y.trim());
+      }
     }
-  };
+    return ['all', ...Array.from(set).sort()];
+  }, [projects]);
+
+  const visibleProjects = useMemo(
+    () => {
+      const filtered =
+        yearFilter === 'all'
+          ? projects
+          : projects.filter(p => (p.author?.year || '').trim() === yearFilter);
+
+      return [...filtered].sort(
+        (a, b) =>
+          new Date(b.created_at || b.updated_at || 0).getTime() -
+          new Date(a.created_at || a.updated_at || 0).getTime(),
+      );
+    },
+    [projects, yearFilter],
+  );
 
   return (
     <TabsContent value="projects" className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Recent Projects
+            Projects
             <div className="flex items-center gap-2">
+              <select
+                value={yearFilter}
+                onChange={e => setYearFilter(e.target.value)}
+                className="px-3 py-1 border rounded-md bg-background text-sm"
+              >
+                {yearOptions.map(y => (
+                  <option key={y} value={y}>
+                    {y === 'all' ? 'All years' : y}
+                  </option>
+                ))}
+              </select>
               <Button size="sm">
                 <FileText className="mr-2 h-4 w-4" />
                 Manage All
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleCleanStorage} disabled={cleaning}>
-                {cleaning ? 'Cleaning…' : 'Clean Storage'}
               </Button>
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {recentProjects.map((project) => (
+            {visibleProjects.map((project) => (
               <div key={project.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <button
                   type="button"
@@ -106,4 +114,3 @@ export function ProjectsTab({ projects }: ProjectsTabProps) {
     </TabsContent>
   );
 }
-

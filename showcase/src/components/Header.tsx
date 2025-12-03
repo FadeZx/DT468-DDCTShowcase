@@ -31,6 +31,8 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
     window.localStorage.setItem('theme', theme);
   }, [theme]);
 
+  const displayRole = currentUser?.semanticRole || currentUser?.role;
+
   return (
     <header className="bg-card border-b border-border px-6 py-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -97,10 +99,10 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
             )}
           </Button>
 
-          {currentUser?.role === 'student' && (
+          {currentUser && (displayRole === 'student' || displayRole === 'partner') && (
             <Link to="/upload">
               <Button 
-                className="bg-orange-500 text-white hover:text-orange-600 flex items-center gap-2"
+                className="bg-orange-500 text-black hover:bg-orange-600 flex items-center gap-2"
               >
                 <Upload className="w-4 h-4" />
                 Upload Project
@@ -126,7 +128,7 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Account Settings</span>
                 </DropdownMenuItem>
-                {currentUser.role === 'admin' && (
+                {(currentUser.semanticRole || currentUser.role) === 'admin' && (
                   <DropdownMenuItem onClick={() => navigate('/admin')}>
                     <BarChart3 className="mr-2 h-4 w-4" />
                     <span>Admin Dashboard</span>

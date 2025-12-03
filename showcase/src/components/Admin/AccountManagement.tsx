@@ -43,6 +43,23 @@ interface AccountManagementProps {
   onAccountCreated?: () => void;
 }
 
+const ALLOWED_PROFILE_ROLES = ['admin', 'student', 'guest'] as const;
+type AllowedProfileRole = (typeof ALLOWED_PROFILE_ROLES)[number];
+
+const normalizeProfileRole = (role: string | null | undefined): AllowedProfileRole => {
+  const r = (role || '').toLowerCase();
+  if (r === 'admin') return 'admin';
+  if (r === 'student' || r === 'partner' || r === 'teacher') return 'student';
+  return 'guest';
+};
+
+const getDisplayRole = (user: User): 'student' | 'partner' | 'admin' => {
+  if (user.role === 'admin') return 'admin';
+  // Partner accounts are stored as role 'student' but have no year
+  if (user.role === 'student' && (!user.year || user.year === 'Unknown')) return 'partner';
+  return 'student';
+};
+
 // Use app-wide Supabase client instance for regular operations
 
 export function AccountManagement({ onAccountCreated }: AccountManagementProps) {
@@ -61,9 +78,26 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
     year: '68',
     role: 'student'
   });
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState<{
+    name: string;
+    email: string;
+    role: 'student' | 'partner' | 'admin';
+    year: string;
+  }>({ name: '', email: '', role: 'student', year: '68' });
+  const [newPassword, setNewPassword] = useState('');
+  const [savingUser, setSavingUser] = useState(false);
 
   useEffect(() => {
     loadAccounts();
+    try {
+      const storedKey = localStorage.getItem('supabase_service_role_key');
+      if (storedKey) {
+        setServiceRoleKey(storedKey);
+      }
+    } catch {
+      // ignore storage errors
+    }
   }, []);
 
   // Filter users based on search and filters
@@ -79,7 +113,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
     }
 
     if (filterRole !== 'all') {
-      filtered = filtered.filter(user => user.role === filterRole);
+      filtered = filtered.filter(user => getDisplayRole(user) === filterRole);
     }
 
     setFilteredUsers(filtered);
@@ -110,7 +144,8 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
   const createAccountWithServiceRole = async () => {
     const key = serviceRoleKey || (import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY as string | undefined);
     if (!key) {
-      alert('Account creation is not configured. Please set VITE_SUPABASE_SERVICE_ROLE_KEY in your environment.');
+      setShowServiceRoleInput(true);
+      alert('Account creation is not configured. Please enter your Supabase service role key.');
       return;
     }
 
@@ -127,8 +162,8 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
         password: createFormData.password,
         user_metadata: {
           name: createFormData.name,
-          role: createFormData.role,
-          year: createFormData.year
+          role: createFormData.role, // keep full semantic role in metadata
+          year: createFormData.role === 'student' ? createFormData.year : null
         },
         email_confirm: true
       });
@@ -136,21 +171,39 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       if (error) throw error;
 
       if (data.user) {
+        const profileRow = {
+          id: data.user.id,
+          email: createFormData.email,
+          name: createFormData.name,
+          // DB constraint only allows admin | student | guest
+          role: normalizeProfileRole(createFormData.role),
+          year: createFormData.role === 'student' ? createFormData.year : null,
+          bio: `${createFormData.role.charAt(0).toUpperCase() + createFormData.role.slice(1)} at DDCT`,
+          skills: [] as string[],
+        };
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: createFormData.email,
-            name: createFormData.name,
-            role: createFormData.role,
-            year: createFormData.year,
-            bio: `${createFormData.role.charAt(0).toUpperCase() + createFormData.role.slice(1)} at DDCT`,
-            skills: []
-          });
+          .insert(profileRow);
 
         if (profileError) {
           console.error('Profile creation error:', profileError);
         }
+
+        // Optimistically add to local state so it shows immediately
+        const newUser: User = {
+          id: profileRow.id,
+          name: profileRow.name,
+          email: profileRow.email,
+          year: profileRow.year,
+          role: profileRow.role as User['role'],
+          avatar: undefined,
+          bio: profileRow.bio,
+          skills: profileRow.skills,
+          created_at: new Date().toISOString(),
+          status: 'active',
+        };
+        setUsers((prev) => [newUser, ...prev]);
       }
 
       alert(`Account created.\nEmail: ${createFormData.email}\nPassword: ${createFormData.password}`);
@@ -163,7 +216,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
         role: 'student'
       });
       setShowCreateForm(false);
-      await loadAccounts();
+      // loadAccounts will refresh from server; we already updated local state above
       onAccountCreated?.();
     } catch (error: any) {
       console.error('Error creating account:', error);
@@ -227,6 +280,117 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
     setCreateFormData(prev => ({ ...prev, password }));
   };
 
+  const beginEditUser = (user: User) => {
+    const role = getDisplayRole(user);
+    setEditingUser(user);
+    setEditForm({
+      name: user.name || '',
+      email: user.email || '',
+      role,
+      year: user.year || '68',
+    });
+    setNewPassword('');
+  };
+
+  const saveEditedUser = async () => {
+    if (!editingUser) return;
+
+    const key = serviceRoleKey || (import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY as string | undefined);
+    if (!key) {
+      setShowServiceRoleInput(true);
+      alert('Account update is not configured. Please enter your Supabase service role key.');
+      return;
+    }
+
+    setSavingUser(true);
+    try {
+      const adminClient = createClient(
+        import.meta.env.VITE_SUPABASE_URL as string,
+        key,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
+
+      const semanticRole = editForm.role;
+      const dbRole = normalizeProfileRole(semanticRole);
+      const yearValue = semanticRole === 'student' ? editForm.year : null;
+
+      // Update profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          name: editForm.name,
+          email: editForm.email,
+          role: dbRole,
+          year: yearValue,
+        })
+        .eq('id', editingUser.id);
+
+      if (profileError) {
+        console.error('Error updating profile:', profileError);
+        alert('Failed to update profile info');
+        setSavingUser(false);
+        return;
+      }
+
+      // Update auth user via admin API
+      const attributes: any = {
+        email: editForm.email,
+        user_metadata: {
+          name: editForm.name,
+          role: semanticRole,
+          year: yearValue,
+        },
+      };
+      if (newPassword) {
+        attributes.password = newPassword;
+      }
+
+      const { error: authError } = await adminClient.auth.admin.updateUserById(
+        editingUser.id,
+        attributes
+      );
+
+      if (authError) {
+        console.error('Error updating auth user:', authError);
+        alert('Profile updated, but failed to update authentication details');
+      } else {
+        alert('Account updated successfully');
+      }
+
+      // Update local state
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === editingUser.id
+            ? {
+                ...u,
+                name: editForm.name,
+                email: editForm.email,
+                role: dbRole as any,
+                year: (yearValue as any) || '',
+              }
+            : u
+        )
+      );
+      setEditingUser(null);
+      setNewPassword('');
+    } catch (error: any) {
+      console.error('Error saving user:', error);
+      alert(error?.message || 'Failed to save user changes');
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const saveServiceRoleKey = () => {
+    try {
+      localStorage.setItem('supabase_service_role_key', serviceRoleKey);
+    } catch {
+      // ignore if storage not available
+    }
+    setShowServiceRoleInput(false);
+    alert('Service role key saved. You can now create and delete accounts.');
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-8">
@@ -238,6 +402,14 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
         </div>
         
         <div className="flex gap-2">
+          <Button
+            onClick={() => setShowServiceRoleInput(true)}
+            variant="outline"
+            disabled={loading}
+          >
+            <Shield className="mr-2 h-4 w-4" />
+            Configure Service Key
+          </Button>
           <Button 
             onClick={() => setShowCreateForm(true)}
             className="bg-primary hover:bg-primary/90"
@@ -248,6 +420,43 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
           </Button>
         </div>
       </div>
+
+      {showServiceRoleInput && (
+        <Card className="mb-6 border-orange-200 bg-orange-50">
+          <CardHeader>
+            <CardTitle className="text-orange-800">Supabase Service Role Key</CardTitle>
+            <p className="text-sm text-orange-700">
+              Paste your Supabase <code>service_role</code> key here. It is stored only in this browser
+              and used for admin actions like creating and deleting accounts.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Service Role Key</label>
+                <Input
+                  type="password"
+                  value={serviceRoleKey}
+                  onChange={(e) => setServiceRoleKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={saveServiceRoleKey} disabled={!serviceRoleKey}>
+                  Save Key
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowServiceRoleInput(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters and Search */}
       <Card className="mb-6">
@@ -341,23 +550,24 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                 </div>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium mb-2">Year</label>
-                <select
-                  value={createFormData.year}
-                  onChange={(e) => setCreateFormData(prev => ({ ...prev, year: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                  disabled={loading}
-                >
-                  <option value="68">68</option>
-                  <option value="67">67</option>
-                  <option value="66">66</option>
-                  <option value="65">65</option>
-                  <option value="64">64</option>
-                  <option value="63">63</option>
-                  <option value="Staff">Staff</option>
-                </select>
-              </div>
+              {createFormData.role === 'student' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Year</label>
+                  <select
+                    value={createFormData.year}
+                    onChange={(e) => setCreateFormData(prev => ({ ...prev, year: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md bg-background"
+                    disabled={loading}
+                  >
+                    <option value="68">68</option>
+                    <option value="67">67</option>
+                    <option value="66">66</option>
+                    <option value="65">65</option>
+                    <option value="64">64</option>
+                    <option value="63">63</option>
+                  </select>
+                </div>
+              )}
               
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium mb-2">Role *</label>
@@ -405,47 +615,149 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       ) : (
         <div className="grid gap-4">
           {filteredUsers.map((user) => (
-            <Card key={user.id}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
+            <div key={user.id} className="space-y-4">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <img src="/placeholder-avatar.svg" alt={user.name} className="w-12 h-12 rounded-full" />
+                      </div>
+                      
+                      <div>
+                        <h3 className="font-semibold">{user.name}</h3>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant={getDisplayRole(user) === 'admin' ? 'default' : 'secondary'}>
+                            {getDisplayRole(user) === 'student'
+                              ? `${user.year} student`
+                              : getDisplayRole(user)}
+                          </Badge>
+                          <Badge variant="outline">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Active
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
                     
-                    <div>
-                      <h3 className="font-semibold">{user.name}</h3>
-                      <p className="text-sm text-muted-foreground">{user.email}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
-                          {user.year} {user.role}
-                        </Badge>
-                        <Badge variant="outline">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Active
-                        </Badge>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => beginEditUser(user)}
+                        disabled={loading}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteUser(user.id, user.email)}
+                        className="text-destructive hover:text-destructive"
+                        disabled={loading}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => deleteUser(user.id, user.email)}
-                      className="text-destructive hover:text-destructive"
-                      disabled={loading}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div className="mt-4 text-sm text-muted-foreground">
+                    Created: {new Date(user.created_at).toLocaleDateString()}
                   </div>
-                </div>
-                
-                <div className="mt-4 text-sm text-muted-foreground">
-                  Created: {new Date(user.created_at).toLocaleDateString()}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {editingUser && editingUser.id === user.id && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Edit Account</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Update basic information, role, and optionally set a new password without the current password.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Full Name</label>
+                        <Input
+                          value={editForm.name}
+                          onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                          disabled={savingUser}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Email</label>
+                        <Input
+                          type="email"
+                          value={editForm.email}
+                          onChange={e => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                          disabled={savingUser}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Role</label>
+                        <select
+                          value={editForm.role}
+                          onChange={e =>
+                            setEditForm(prev => ({ ...prev, role: e.target.value as any }))
+                          }
+                          className="w-full px-3 py-2 border rounded-md bg-background"
+                          disabled={savingUser}
+                        >
+                          <option value="student">Student</option>
+                          <option value="partner">Partner</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                      {editForm.role === 'student' && (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Year</label>
+                          <select
+                            value={editForm.year}
+                            onChange={e => setEditForm(prev => ({ ...prev, year: e.target.value }))}
+                            className="w-full px-3 py-2 border rounded-md bg-background"
+                            disabled={savingUser}
+                          >
+                            <option value="68">68</option>
+                            <option value="67">67</option>
+                            <option value="66">66</option>
+                            <option value="65">65</option>
+                            <option value="64">64</option>
+                            <option value="63">63</option>
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-medium mb-2">New Password (optional)</label>
+                        <Input
+                          type="text"
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
+                          placeholder="Set a new password"
+                          disabled={savingUser}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={saveEditedUser} disabled={savingUser}>
+                        {savingUser ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingUser(null);
+                          setNewPassword('');
+                        }}
+                        disabled={savingUser}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           ))}
         </div>
       )}

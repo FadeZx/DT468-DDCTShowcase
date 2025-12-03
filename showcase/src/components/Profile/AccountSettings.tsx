@@ -38,6 +38,7 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [yearUpdateLoading, setYearUpdateLoading] = useState(false);
   const [selectedYear, setSelectedYear] = useState(user.year || '68');
+  const displayRole = user.semanticRole || user.role;
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,9 +210,9 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
               <div className="flex-1">
                 <h3 className="text-xl font-semibold">{user.name}</h3>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge className={getRoleBadgeColor(user.role)}>
+                  <Badge className={getRoleBadgeColor(displayRole)}>
                     <Shield className="w-3 h-3 mr-1" />
-                    {user.year} {user.role}
+                    {displayRole === 'student' ? `${user.year} ${displayRole}` : displayRole}
                   </Badge>
                 </div>
               </div>
@@ -243,7 +244,7 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
       </Card>
 
       {/* Year Update for Students */}
-      {user.role === 'student' && (
+      {displayRole === 'student' && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
