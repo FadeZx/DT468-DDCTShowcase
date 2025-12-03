@@ -64,11 +64,6 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
 
   useEffect(() => {
     loadAccounts();
-    // Check if service role key is stored
-    const storedKey = localStorage.getItem('supabase_service_role_key');
-    if (storedKey) {
-      setServiceRoleKey(storedKey);
-    }
   }, []);
 
   // Filter users based on search and filters
@@ -113,21 +108,20 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
   };
 
   const createAccountWithServiceRole = async () => {
-    if (!serviceRoleKey) {
-      setShowServiceRoleInput(true);
+    const key = serviceRoleKey || (import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY as string | undefined);
+    if (!key) {
+      alert('Account creation is not configured. Please set VITE_SUPABASE_SERVICE_ROLE_KEY in your environment.');
       return;
     }
 
     setLoading(true);
     try {
-      // Create admin client with service role key
       const adminClient = createClient(
         import.meta.env.VITE_SUPABASE_URL as string,
-        serviceRoleKey,
+        key,
         { auth: { persistSession: false, autoRefreshToken: false } }
       );
 
-      // Create user in Supabase Auth
       const { data, error } = await adminClient.auth.admin.createUser({
         email: createFormData.email,
         password: createFormData.password,
@@ -136,32 +130,31 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
           role: createFormData.role,
           year: createFormData.year
         },
-        email_confirm: true // Auto-confirm email for admin-created accounts
+        email_confirm: true
       });
 
       if (error) throw error;
 
-      // Create profile in profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: data.user.id,
-          email: createFormData.email,
-          name: createFormData.name,
-          role: createFormData.role,
-          year: createFormData.year,
-          bio: `${createFormData.role.charAt(0).toUpperCase() + createFormData.role.slice(1)} at DDCT`,
-          skills: []
-        });
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            email: createFormData.email,
+            name: createFormData.name,
+            role: createFormData.role,
+            year: createFormData.year,
+            bio: `${createFormData.role.charAt(0).toUpperCase() + createFormData.role.slice(1)} at DDCT`,
+            skills: []
+          });
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Don't throw here as the auth user was created successfully
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+        }
       }
 
-      alert(`Account created successfully!\nEmail: ${createFormData.email}\nPassword: ${createFormData.password}\n\nPlease save these credentials and share them with the user.`);
-      
-      // Reset form
+      alert(`Account created.\nEmail: ${createFormData.email}\nPassword: ${createFormData.password}`);
+
       setCreateFormData({
         name: '',
         email: '',
@@ -170,42 +163,18 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
         role: 'student'
       });
       setShowCreateForm(false);
-      
-      // Refresh accounts list
       await loadAccounts();
-      
-      // Call callback if provided
-      if (onAccountCreated) {
-        onAccountCreated();
-      }
-      
+      onAccountCreated?.();
     } catch (error: any) {
       console.error('Error creating account:', error);
-      if (error.message.includes('Invalid API key')) {
-        alert('Invalid service role key. Please check your key and try again.');
-        setShowServiceRoleInput(true);
-      } else {
-        alert(error.message || 'Failed to create account');
-      }
+      alert(error?.message || 'Failed to create account');
     } finally {
       setLoading(false);
     }
   };
 
-  const saveServiceRoleKey = () => {
-    localStorage.setItem('supabase_service_role_key', serviceRoleKey);
-    setShowServiceRoleInput(false);
-    alert('Service role key saved! You can now create accounts directly.');
-  };
-
   const deleteUser = async (userId: string, userEmail: string) => {
     if (!confirm(`Are you sure you want to delete the account for ${userEmail}? This action cannot be undone.`)) {
-      return;
-    }
-
-    if (!serviceRoleKey) {
-      alert('Service role key required for user deletion. Please set it first.');
-      setShowServiceRoleInput(true);
       return;
     }
 
@@ -215,7 +184,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       // Create admin client with service role key
       const adminClient = createClient(
         import.meta.env.VITE_SUPABASE_URL as string,
-        serviceRoleKey,
+        serviceRoleKey || (import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY as string),
         { auth: { persistSession: false, autoRefreshToken: false } }
       );
 
@@ -269,16 +238,6 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
         </div>
         
         <div className="flex gap-2">
-          {!serviceRoleKey && (
-            <Button 
-              onClick={() => setShowServiceRoleInput(true)}
-              variant="outline"
-              className="mr-2"
-            >
-              <Shield className="mr-2 h-4 w-4" />
-              Setup Service Key
-            </Button>
-          )}
           <Button 
             onClick={() => setShowCreateForm(true)}
             className="bg-primary hover:bg-primary/90"
@@ -289,48 +248,6 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
           </Button>
         </div>
       </div>
-
-      {/* Service Role Key Input */}
-      {showServiceRoleInput && (
-        <Card className="mb-6 border-orange-200 bg-orange-50">
-          <CardHeader>
-            <CardTitle className="text-orange-800">Setup Service Role Key</CardTitle>
-            <p className="text-sm text-orange-700">
-              To create accounts directly in the app, you need to provide your Supabase service role key.
-              This key will be stored locally in your browser.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Service Role Key</label>
-                <Input
-                  type="password"
-                  value={serviceRoleKey}
-                  onChange={(e) => setServiceRoleKey(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="font-mono text-sm"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Find this in your Supabase Dashboard → Settings → API → service_role key
-                </p>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button onClick={saveServiceRoleKey} disabled={!serviceRoleKey}>
-                  Save Key
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowServiceRoleInput(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Filters and Search */}
       <Card className="mb-6">
@@ -377,10 +294,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
           <CardHeader>
             <CardTitle>Create New Account</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {serviceRoleKey 
-                ? "Create accounts directly in the application."
-                : "You need to setup the service role key first to create accounts directly."
-              }
+              Admins can create accounts directly from this form.
             </p>
           </CardHeader>
           <CardContent>
