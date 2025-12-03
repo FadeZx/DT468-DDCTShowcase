@@ -807,27 +807,30 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 </Button>
               )}
               
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-wrap gap-3">
                 {hasFilesTabContent && (
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab('files')}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab('files')}
+                    className="flex-1 min-w-[140px]"
+                  >
                     <Download className="mr-2 h-4 w-4" />
                     Files ({downloadableFiles.length + webglFiles.length})
                   </Button>
                 )}
-              </div>
 
-              <div className="flex flex-wrap justify-center gap-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={toggleLike}
                   disabled={!currentUser || likesLoading}
-                  className={`min-w-[140px] ${isLiked ? 'text-red-500 border-red-500 hover:text-red-600 hover:border-red-600' : ''}`}
+                  className={`flex-1 min-w-[140px] ${isLiked ? 'text-red-500 border-red-500 hover:text-red-600 hover:border-red-600' : ''}`}
                 >
                   <Heart className={`mr-2 h-4 w-4 transition-all ${isLiked ? 'fill-current' : ''}`} />
                   {isLiked ? 'Liked' : 'Like'} ({likesCount})
                 </Button>
-                <Button variant="outline" size="sm" className="min-w-[140px]">
+                <Button variant="outline" size="sm" className="flex-1 min-w-[140px]">
                   <Share2 className="mr-2 h-4 w-4" />
                   Share
                 </Button>

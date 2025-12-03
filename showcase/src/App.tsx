@@ -540,6 +540,23 @@ export default function App() {
     return hydrateProjects(rows);
   };
 
+  const loadUsersForAdmin = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email, avatar, role, year, created_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const list = data || [];
+      setUsersState(list);
+      users = list;
+    } catch (e) {
+      console.warn('Failed to load users for admin dashboard', e);
+      setUsersState([]);
+      users = [];
+    }
+  };
+
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -558,6 +575,16 @@ export default function App() {
       active = false;
     };
   }, [currentUser?.id]);
+
+  // Load user list for admin views
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      loadUsersForAdmin();
+    } else {
+      setUsersState([]);
+      users = [];
+    }
+  }, [currentUser?.id, currentUser?.role]);
 
   const loadMockData = () => {
     // Mock removed; rely on Supabase only.
@@ -784,7 +811,7 @@ export default function App() {
                 currentUser?.role === 'admin' ? (
                   <AdminDashboard
                     projects={projects}
-                    users={users}
+                    users={usersState}
                   />
                 ) : (
                   <div className="max-w-7xl mx-auto px-6 py-8">

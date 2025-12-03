@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { 
   Users, BookOpen, Award, TrendingUp, Download, 
-  Calendar, Filter, FileText, Settings, MessageSquare, Image as ImageIcon, Video as VideoIcon 
+  Calendar, Filter, FileText, MessageSquare, Image as ImageIcon, Video as VideoIcon 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SupabaseImage } from './figma/SupabaseImage';
@@ -640,11 +640,10 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
       </div>
 
       <Tabs defaultValue="analytics" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="projects">Project Management</TabsTrigger>
           <TabsTrigger value="users">User Management</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="analytics" className="space-y-6">
@@ -868,23 +867,31 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {users.slice(0, 10).map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                {(users ?? []).slice(0, 10).map((user) => {
+                  const name = user?.name || user?.full_name || 'Unknown User';
+                  const email = user?.email || user?.email_address || 'No email';
+                  const year = user?.year || user?.student_year || 'Unknown year';
+                  const role = user?.role || user?.user_role || 'Unknown role';
+                  const projectCount = projects.filter(p => p.author && p.author.id === user.id).length;
+                  const initial = String(name).trim()[0] || 'U';
+
+                  return (
+                  <div key={user.id || email} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold">
-                        {user.name[0]}
+                        {initial}
                       </div>
                       <div>
-                        <h4 className="font-semibold">{user.name}</h4>
+                        <h4 className="font-semibold">{name}</h4>
                         <p className="text-sm text-muted-foreground">
-                          {user.email} • {user.year} • {user.role}
+                          {email} • {year} • {role}
                         </p>
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-2">
                       <div className="text-right text-sm">
-                        <div>{projects.filter(p => p.author.id === user.id).length} projects</div>
+                        <div>{projectCount} projects</div>
                         <div className="text-muted-foreground">
                           Joined {user.joinDate || 'Sept 2024'}
                         </div>
@@ -894,61 +901,7 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
                       </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Platform Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <h3 className="font-semibold mb-4">Project Management</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span>Auto-approve student projects</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Featured project criteria</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="font-semibold mb-4">User Management</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span>Student registration approval</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Teacher role permissions</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="font-semibold mb-4">Export & Reports</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span>Automated monthly reports</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Student resume templates</span>
-                    <Button variant="outline" size="sm">Configure</Button>
-                  </div>
-                </div>
+                )})}
               </div>
             </CardContent>
           </Card>
