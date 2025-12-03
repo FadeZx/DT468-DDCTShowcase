@@ -38,6 +38,17 @@
   object-position: center center;
 }
 
+/* Project card helpers */
+.project-category-badge {
+  padding: 5px;
+  border-radius: 10px;
+}
+
+/* Smooth scroll for in-page anchors (e.g. Featured Projects link) */
+html {
+  scroll-behavior: smooth;
+}
+
 @layer properties {
   @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {
     *, :before, :after, ::backdrop {

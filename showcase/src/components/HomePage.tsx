@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { ProjectCard } from './ProjectCard';
@@ -8,6 +8,8 @@ import { SupabaseImage } from './figma/SupabaseImage';
 import { FallingSymbols } from './FallingSymbols';
 import { SteamLikeFeatured } from './SteamLikeFeatured';
 
+const HERO_TITLE = 'WHERE IMAGINATION MEETS INNOVATION';
+
 interface HomePageProps {
   projects: any[];
   onProjectClick: (projectId: string) => void;
@@ -16,6 +18,24 @@ interface HomePageProps {
 export function HomePage({ projects, onProjectClick }: HomePageProps) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [typedTitle, setTypedTitle] = useState('');
+
+  useEffect(() => {
+    let currentIndex = 0;
+
+    const intervalId = window.setInterval(() => {
+      currentIndex += 1;
+      setTypedTitle(HERO_TITLE.slice(0, currentIndex));
+
+      if (currentIndex >= HERO_TITLE.length) {
+        window.clearInterval(intervalId);
+      }
+    }, 80);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const featuredProjects = projects.filter(p => p.featured).slice(0, 3);
   const recentProjects = projects.slice(0, 8);
@@ -89,10 +109,10 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
       <FallingSymbols />
       <div className="max-w-7xl mx-auto px-6 py-8 relative z-20">
       {/* Hero Section */}
-      <div className="mb-12">
+      <div className="mb-12 min-h-screen flex flex-col justify-center">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">
-            WHERE IMAGINATION MEETS INNOVATION
+            {typedTitle}
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Discover amazing games, animations, and digital art created by talented students 
@@ -102,7 +122,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
         {/* Featured Projects */}
         {featuredProjects.length > 0 && (
-          <div className="mb-12">
+          <div id="featured-projects" className="mb-12">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold">Featured Projects</h2>
               <Button variant="outline" className="group">
@@ -170,7 +190,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
             )}
 
             <TabsContent value={selectedCategory}>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-4">
                 {filteredProjects.slice(0, 12).map((project) => (
                   <ProjectCard
                     key={project.id}
@@ -211,8 +231,6 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
                   <p className="text-sm text-muted-foreground mb-1">{event.date}</p>
                   <p className="text-sm mb-2">{event.description}</p>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Users className="w-3 h-3" />
-                    {event.participants} participants
                   </div>
                 </div>
               ))}

@@ -83,7 +83,7 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
         )}
         <Badge 
           variant="secondary" 
-          className="absolute top-2 right-2 bg-secondary/80 backdrop-blur-sm"
+          className="absolute top-2 right-2 bg-secondary/80 backdrop-blur-sm project-category-badge"
         >
           {project.category}
         </Badge>
