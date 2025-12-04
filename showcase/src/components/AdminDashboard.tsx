@@ -3,6 +3,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { AnalyticsTab } from './Admin/AnalyticsTab.tsx';
 import { ProjectsTab } from './Admin/ProjectsTab.tsx';
 import { AccountManagement } from './Admin/AccountManagement';
+import { EventsTab } from './Admin/EventsTab';
 
 interface AdminDashboardProps {
   projects: any[];
@@ -26,14 +27,16 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
       </div>
 
       <Tabs defaultValue="analytics" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="projects">Project Management</TabsTrigger>
+          <TabsTrigger value="events">Events Management</TabsTrigger>
           <TabsTrigger value="users">Account Management</TabsTrigger>
         </TabsList>
 
         <AnalyticsTab projects={projects} users={users} />
         <ProjectsTab projects={projects} />
+        <EventsTab />
         <TabsContent value="users" className="space-y-6">
           <AccountManagement />
         </TabsContent>

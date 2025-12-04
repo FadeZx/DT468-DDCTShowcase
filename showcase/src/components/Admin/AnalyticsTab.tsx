@@ -32,6 +32,7 @@ interface AnalyticsTabProps {
 
 export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
   const [studentYearFilter, setStudentYearFilter] = useState<string>('All');
+  const [exporting, setExporting] = useState(false);
 
   const totalProjects = projects.length;
   const totalStudents = users.filter((u) => u.role === 'student').length;
@@ -120,6 +121,89 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
     [projects],
   );
 
+  const downloadText = (filename: string, mime: string, content: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.open(url, '_blank', 'noopener,noreferrer');
+    URL.revokeObjectURL(url);
+  };
+
+  const toCsv = (rows: Record<string, any>[], headers: string[]) => {
+    const escape = (v: any) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const lines = [headers.join(',')];
+    for (const row of rows) {
+      lines.push(headers.map((h) => escape(row[h])).join(','));
+    }
+    return lines.join('\n');
+  };
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    try {
+      setExporting(true);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const summary = {
+        totals: {
+          totalProjects,
+          totalStudents,
+          featuredProjects,
+          totalViews,
+          totalLikes,
+          totalComments,
+        },
+        projects: projects.map((p) => ({
+          id: p.id,
+          title: p.title,
+          category: p.category,
+          authorYear: p.author?.year,
+          views: p.stats?.views || 0,
+          likes: p.stats?.likes || 0,
+          comments: p.stats?.comments || 0,
+          featured: !!p.featured,
+          updated_at: p.updated_at || p.created_at,
+        })),
+        users: users.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          year: u.year,
+          created_at: u.created_at,
+        })),
+      };
+
+      if (format === 'json') {
+        downloadText(`ddct-analytics-${timestamp}.json`, 'application/json', JSON.stringify(summary, null, 2));
+      } else {
+        const projectHeaders = ['id', 'title', 'category', 'authorYear', 'views', 'likes', 'comments', 'featured', 'updated_at'];
+        const userHeaders = ['id', 'name', 'email', 'role', 'year', 'created_at'];
+        const csv = [
+          '# Projects',
+          toCsv(summary.projects as any, projectHeaders),
+          '',
+          '# Users',
+          toCsv(summary.users as any, userHeaders),
+          '',
+          '# Totals',
+          toCsv([summary.totals], Object.keys(summary.totals)),
+        ].join('\n');
+        downloadText(`ddct-analytics-${timestamp}.csv`, 'text/csv', csv);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <TabsContent value="analytics" className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -172,7 +256,7 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
         </Card>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Student year (owner):</span>
           <select
@@ -186,6 +270,16 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => handleExport('csv')} disabled={exporting}>
+            <Download className="h-4 w-4 mr-2" />
+            {exporting ? 'Preparing…' : 'Export CSV'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExport('json')} disabled={exporting}>
+            <Download className="h-4 w-4 mr-2" />
+            {exporting ? 'Preparing…' : 'Export JSON'}
+          </Button>
         </div>
       </div>
 

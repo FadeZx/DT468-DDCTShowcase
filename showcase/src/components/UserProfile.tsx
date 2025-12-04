@@ -36,13 +36,16 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const displayAvatar = useMemo(
     () => avatarPreview || editedUser.avatar || user.avatar || null,
     [avatarPreview, editedUser.avatar, user.avatar]
   );
   const displayRole = user.semanticRole || user.role;
-  const viewerRole = ((currentUser?.semanticRole || currentUser?.role || '') as string).toLowerCase();
-  const limitedView = !isOwnProfile && !['admin', 'partner', 'teacher'].includes(viewerRole);
+  const viewerRoleRaw = currentUser ? (currentUser.semanticRole || currentUser.role) : '';
+  const viewerRole = `${viewerRoleRaw || ''}`.toLowerCase();
+  const isPrivilegedViewer = ['admin', 'partner', 'teacher'].includes(viewerRole);
+  const limitedView = !isOwnProfile && !isPrivilegedViewer;
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -53,7 +56,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     hiddenProjects: [],
   });
   
-  const canExportPDF = ['admin', 'partner', 'teacher'].includes(viewerRole);
+  const canExportPDF = ['admin', 'partner'].includes(viewerRole);
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)
@@ -146,9 +149,82 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     reader.readAsDataURL(file);
   };
 
-  const handleExportPDF = () => {
-    // Logic to export PDF resume
-    console.log('Exporting PDF resume for', user.name);
+  const handleExportPDF = async () => {
+    try {
+      setExporting(true);
+      const [{ jsPDF }] = await Promise.all([
+        import('jspdf'),
+        // Preload html2canvas in case we later expand to screenshots; keeps tree shaking happy
+        import('html2canvas'),
+      ]);
+
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let y = 16;
+
+      const addHeading = (text: string, size = 16) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(size);
+        doc.text(text, 14, y);
+        y += size < 16 ? 8 : 10;
+      };
+
+      const addLabelValue = (label: string, value?: string | null) => {
+        if (!value) return;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(`${label}:`, 14, y);
+        doc.setFont('helvetica', 'normal');
+        const text = doc.splitTextToSize(value, pageWidth - 40);
+        doc.text(text, 40, y);
+        y += 6 + (text.length - 1) * 6;
+      };
+
+      addHeading('DDCT Student Resume');
+      addLabelValue('Name', user.name);
+      addLabelValue('Email', user.email);
+      addLabelValue('Role', displayRole || 'Student');
+      if (displayRole === 'student' && user.year) addLabelValue('Year', user.year);
+      addLabelValue('Location', user.location);
+      addLabelValue('Bio', user.bio);
+      if (Array.isArray(user.skills) && user.skills.length) {
+        addLabelValue('Skills', user.skills.join(', '));
+      }
+      if (user.majors) addLabelValue('Majors', user.majors);
+
+      const totalProjects = combinedProjects.length;
+      const featured = userProjects.filter(p => p.featured).length;
+      addHeading('Project Summary', 14);
+      addLabelValue('Total Projects', String(totalProjects));
+      addLabelValue('Featured Projects', String(featured));
+
+      if (combinedProjects.length) {
+        addHeading('Projects', 14);
+        combinedProjects.forEach((p, idx) => {
+          addHeading(`${idx + 1}. ${p.title || 'Untitled Project'}`, 12);
+          addLabelValue('Category', p.category);
+          addLabelValue('Summary', p.description || p.summary || '');
+          addLabelValue('Views', p.stats?.views != null ? String(p.stats.views) : undefined);
+          addLabelValue('Featured', p.featured ? 'Yes' : undefined);
+          y += 2;
+          if (y > doc.internal.pageSize.getHeight() - 20) {
+            doc.addPage();
+            y = 16;
+          }
+        });
+      }
+
+      const fileName = `${(user.name || 'student').replace(/\\s+/g, '_')}_resume.pdf`;
+      const blobUrl = doc.output('bloburl');
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      // Also trigger download to ensure availability offline
+      doc.save(fileName);
+    } catch (err) {
+      console.error('Export PDF failed', err);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (limitedView) {
@@ -432,9 +508,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                     )}
                     
                     {canExportPDF && (
-                      <Button onClick={handleExportPDF} variant="outline" size="sm">
+                      <Button onClick={handleExportPDF} variant="outline" size="sm" disabled={exporting}>
                         <Download className="mr-2 h-4 w-4" />
-                        Export Resume PDF
+                        {exporting ? 'Preparing PDF...' : 'Export Resume PDF'}
                       </Button>
                     )}
                   </div>
