@@ -6,7 +6,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import supabase from '../../utils/supabase/client';
-import { Plus, X, Users, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, Star, MoveUp, MoveDown } from 'lucide-react';
+import { Plus, X, Users, Hash, Upload as UploadIcon, Image as ImageIcon, FileText, Link as LinkIcon, Bold, Italic, List, ChevronUp, ChevronDown } from 'lucide-react';
 import { TagPicker } from '../TagPicker';
 import { uploadProjectFile, deleteProjectFile, uploadWebGLBuildFromZip, deleteStoragePrefix } from '../../utils/fileStorage';
 
@@ -394,6 +394,16 @@ export default function UploadProjectPage({
         return checked ? { ...item, isCover: false } : item;
       })
     );
+
+    if (checked) {
+      setFiles(prev =>
+        prev.map(file =>
+          file.file_type === 'image'
+            ? { ...file, is_cover: false }
+            : file
+        )
+      );
+    }
   };
 
   async function uploadPending(pid: string) {
@@ -523,6 +533,67 @@ export default function UploadProjectPage({
     } catch {
       alert('Failed to set cover');
     }
+  };
+
+  const toggleExistingCover = async (fileId: string, checked: boolean) => {
+    const pid = editProjectId || newProjectId;
+    if (!pid) return;
+
+    if (checked) {
+      setPendingMedia(prev =>
+        prev.map(item =>
+          isFileMedia(item) && item.type === 'image'
+            ? { ...item, isCover: false }
+            : item
+        )
+      );
+
+      await handleSetCover(fileId);
+      return;
+    }
+
+    try {
+      await supabase
+        .from('project_files')
+        .update({ is_cover: false })
+        .eq('id', fileId);
+
+      await supabase
+        .from('projects')
+        .update({ cover_image: null })
+        .eq('id', pid);
+
+      await refreshFiles(pid);
+    } catch {
+      alert('Failed to update cover');
+    }
+  };
+
+  const moveExistingMedia = (fileId: string, delta: number) => {
+    setFiles(prev => {
+      const mediaIndexes: number[] = [];
+      prev.forEach((file, index) => {
+        if (file.file_type === 'image' || file.file_type === 'video') {
+          mediaIndexes.push(index);
+        }
+      });
+
+      const currentIndex = prev.findIndex(f => f.id === fileId);
+      if (currentIndex === -1) return prev;
+
+      const positionInMedia = mediaIndexes.indexOf(currentIndex);
+      if (positionInMedia === -1) return prev;
+
+      const nextPosition = positionInMedia + delta;
+      if (nextPosition < 0 || nextPosition >= mediaIndexes.length) return prev;
+
+      const targetIndex = mediaIndexes[nextPosition];
+      const updated = [...prev];
+      const [moved] = updated.splice(currentIndex, 1);
+      const adjustedTargetIndex = targetIndex > currentIndex ? targetIndex - 1 : targetIndex;
+      updated.splice(adjustedTargetIndex, 0, moved);
+      return updated;
+    });
   };
 
   const handleDeleteFile = async (fileId: string) => {
@@ -724,7 +795,7 @@ export default function UploadProjectPage({
   if (loading && isEditing) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-5xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -738,7 +809,7 @@ export default function UploadProjectPage({
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-5xl mx-auto px-4">
+      <div className="max-w-7xl mx-auto px-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">{isEditing ? 'Edit Project' : 'Create a New Project'}</h1>
           <p className="text-gray-600">Uploads and details - one page, like itch.io.</p>
@@ -746,319 +817,69 @@ export default function UploadProjectPage({
 
         {/* Details */}
         <Card className="mb-6">
-          <CardContent className="pt-6 space-y-4">
-            <h2 className="text-xl font-semibold">Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Title <span className="text-red-500">*</span></label>
-                <Input required aria-invalid={title.trim().length === 0} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Project title" />
-                {title.trim().length === 0 && (
-                  <p className="text-xs text-red-500 mt-1">Title is required</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Category <span className="text-red-500">*</span></label>
-                <select
-                  className="w-full border rounded-md h-9 px-2 bg-background"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  aria-invalid={categoryIsMissing}
-                  required
-                >
-                  <option value="">Select category</option>
-                  <option value="Art">Art</option>
-                  <option value="Animation">Animation</option>
-                  <option value="Game">Game</option>
-                  <option value="Simulation">Simulation</option>
-                  <option value="Others">Others</option>
-                </select>
-                {category === 'Others' && (
-                  <div className="mt-2">
-                    <label className="block text-xs text-muted-foreground mb-1">Specify category</label>
-                    <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
-                  </div>
-                )}
-                {categoryIsMissing && (
-                  <p className="text-xs text-red-500 mt-1">Category is required</p>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Visibility</label>
-                <select className="w-full border rounded-md h-9 px-2 bg-background" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
-                  <option value="unlisted">Unlisted</option>
-                  <option value="public">Public</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Unlisted projects stay off the home page and search results, but you and your collaborators can access them via profile.
-                </p>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Short description</label>
-              <Textarea rows={3} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="One-liner shown in cards" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Uploads (separated) */}
-        <Card className="mb-6">
-          <CardContent className="pt-6 space-y-6">
-            {/* Media */}
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Media (images/videos)</h2>
-                <div className="flex items-center gap-3">
-                  <input ref={mediaInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => chooseFiles(e.target.files)} />
-                  <Button type="button" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload media'}</Button>
-                  <div className="flex gap-2">
-                    <Input placeholder="Paste video URL (YouTube, etc.)" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-                    <Button type="button" onClick={handleAddVideoUrl}>Add URL</Button>
-                  </div>
+          <CardContent className="p-6 space-y-6">
+              <h2 className="text-xl font-semibold">Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Title <span className="text-red-500">*</span></label>
+                  <Input required aria-invalid={title.trim().length === 0} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Project title" />
+                  {title.trim().length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Title is required</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Category <span className="text-red-500">*</span></label>
+                  <select
+                    className="w-full border rounded-md h-9 px-2 bg-background text-sm"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    aria-invalid={categoryIsMissing}
+                    required
+                  >
+                    <option value="">Select category</option>
+                    <option value="Art">Art</option>
+                    <option value="Animation">Animation</option>
+                    <option value="Game">Game</option>
+                    <option value="Simulation">Simulation</option>
+                    <option value="Others">Others</option>
+                  </select>
+                  {category === 'Others' && (
+                    <div className="mt-2">
+                      <label className="block text-xs text-muted-foreground mb-2">Specify category</label>
+                      <Input value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} placeholder="Type your category" />
+                    </div>
+                  )}
+                  {categoryIsMissing && (
+                    <p className="text-xs text-red-500 mt-1">Category is required</p>
+                  )}
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">First uploaded image becomes the cover. You can change it below.</p>
-              {pendingMedia.length > 0 && (
-                <div className="space-y-3 mb-4">
-                  {pendingMedia.map((m, index) => (
-                    <div key={m.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
-                      {m.kind === 'url' ? (
-                        <div className="flex-shrink-0" style={{ width: VIDEO_PREVIEW_WIDTH }}>
-                          <div className="aspect-video rounded-md overflow-hidden bg-muted">
-                            <iframe
-                              src={getVideoEmbedUrl(m.url)}
-                              className="w-full h-full"
-                              title={`Video preview ${index + 1}`}
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
-                          style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
-                        >
-                          {m.type === 'image' ? (
-                            <img
-                              src={URL.createObjectURL(m.file)}
-                              alt="preview"
-                              className="max-w-full max-h-full object-cover"
-                            />
-                          ) : (
-                            <FileText className="w-6 h-6 text-muted-foreground" />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0 text-sm">
-                        {m.kind === 'file' ? (
-                          <div className="flex flex-col gap-1">
-                            <div className="font-medium text-primary truncate">{m.file.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">{m.file.type} - {m.file.size.toLocaleString()} bytes</div>
-                            {m.type === 'image' && (
-                              <label className="inline-flex items-center gap-2 text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={!!m.isCover}
-                                  onChange={(e) => togglePendingCover(m.id, e.target.checked)}
-                                />
-                                <span>Use as cover image</span>
-                              </label>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="font-medium text-primary truncate">{m.url}</div>
-                        )}
-                      </div>
-                      {pendingMedia.length > 1 && (
-                        <div className="flex flex-col gap-1">
-                          <Button type="button" size="icon" variant="ghost" onClick={() => movePendingMedia(m.id, -1)} aria-label="Move up"><MoveUp className="w-4 h-4" /></Button>
-                          <Button type="button" size="icon" variant="ghost" onClick={() => movePendingMedia(m.id, 1)} aria-label="Move down"><MoveDown className="w-4 h-4" /></Button>
-                        </div>
-                      )}
-                      <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Visibility</label>
+                  <select className="w-full border rounded-md h-9 px-2 bg-background text-sm" value={visibility} onChange={(e) => setVisibility(e.target.value as any)}>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="public">Public</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Unlisted projects stay off the home page and search results, but you and your collaborators can access them via profile.
+                  </p>
                 </div>
-              )}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tags</label>
+                  <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
+                </div>
+              </div>
               <div>
-                <h3 className="font-medium mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Existing media</h3>
-                {files.filter(f => f.file_type === 'image' || f.file_type === 'video').length > 0 ? (
-                  <div className="space-y-3">
-                    {files.filter(f => f.file_type === 'image' || f.file_type === 'video').map((f, idx) => (
-                      <div key={f.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
-                        <div
-                          className="flex-shrink-0 rounded-md overflow-hidden bg-muted flex items-center justify-center"
-                          style={{ width: FILE_PREVIEW_DIMENSIONS.width, height: FILE_PREVIEW_DIMENSIONS.height }}
-                        >
-                          {f.file_type === 'image' ? (
-                            <img src={f.file_url} alt={f.file_name} className="max-w-full max-h-full object-cover" />
-                          ) : (
-                            <video src={f.file_url} controls className="w-full h-full object-cover" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0 text-sm">
-                          <div className="font-medium text-primary truncate">{f.file_name}</div>
-                          <div className="text-xs text-muted-foreground truncate">{f.mime_type} - {(f.file_size || 0).toLocaleString()} bytes</div>
-                          {f.file_type === 'image' && f.is_cover && (
-                            <div className="inline-flex items-center gap-1 text-xs text-yellow-600 mt-1">
-                              <Star className="w-4 h-4" /> Cover image
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {files.filter(ff => ff.file_type === 'image' || ff.file_type === 'video').length > 1 && (
-                            <div className="flex flex-col gap-1">
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                disabled={idx === 0}
-                                onClick={() => setFiles(prev => {
-                                  const list = prev.filter(ff => ff.file_type === 'image' || ff.file_type === 'video');
-                                  const others = prev.filter(ff => ff.file_type !== 'image' && ff.file_type !== 'video');
-                                  const i = list.findIndex(item => item.id === f.id);
-                                  if (i <= 0) return prev;
-                                  const reordered = [...list];
-                                  const [item] = reordered.splice(i, 1);
-                                  reordered.splice(i - 1, 0, item);
-                                  return [...reordered, ...others];
-                                })}
-                                aria-label="Move up"
-                              >
-                                <MoveUp className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                disabled={idx === files.filter(ff => ff.file_type === 'image' || ff.file_type === 'video').length - 1}
-                                onClick={() => setFiles(prev => {
-                                  const list = prev.filter(ff => ff.file_type === 'image' || ff.file_type === 'video');
-                                  const others = prev.filter(ff => ff.file_type !== 'image' && ff.file_type !== 'video');
-                                  const i = list.findIndex(item => item.id === f.id);
-                                  if (i === -1 || i === list.length - 1) return prev;
-                                  const reordered = [...list];
-                                  const [item] = reordered.splice(i, 1);
-                                  reordered.splice(i + 1, 0, item);
-                                  return [...reordered, ...others];
-                                })}
-                                aria-label="Move down"
-                              >
-                                <MoveDown className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          )}
-                          {f.file_type === 'image' && (
-                            <Button variant="outline" size="sm" onClick={() => handleSetCover(f.id)} disabled={f.is_cover}>
-                              {f.is_cover ? <><Star className="w-4 h-4 mr-1 text-yellow-500" /> Cover</> : 'Make cover'}
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="icon" onClick={() => handleDeleteFile(f.id)} aria-label="Remove"><X className="w-4 h-4" /></Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No media uploaded yet.</p>
-                )}
+                <label className="block text-sm font-medium mb-2">Project overview</label>
+                <Textarea rows={3} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="One-liner shown in cards" />
               </div>
-            </div>
-
-            {/* Project files */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold flex items-center gap-2"><UploadIcon className="w-5 h-5" /> Project Files</h2>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={projectInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => chooseFiles(e.target.files)}
-                    accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
-                  />
-                  <Button type="button" disabled={uploadingFiles} onClick={() => projectInputRef.current?.click()}><UploadIcon className="w-4 h-4 mr-2" /> {uploadingFiles ? 'Uploading...' : 'Upload files'}</Button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {pendingDocs.map(d => {
-                  const supportsPlay = supportsBrowserPlay(d.file);
-                  return (
-                    <div key={d.id} className="p-3 border rounded-md bg-background space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                          <FileText className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate text-sm font-medium">{d.file.name}</div>
-                          <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
-                        </div>
-                        <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div>
-                          <label className="block text-xs font-semibold mb-1">File content</label>
-                          <select
-                            className="w-full border rounded-md h-9 px-2 bg-background"
-                            value={d.contentKind}
-                            onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, contentKind: e.target.value as FileContentKind } : item))}
-                          >
-                            {FILE_CONTENT_OPTIONS.map(option => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex items-center">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4"
-                              checked={d.playInBrowser && supportsPlay}
-                              disabled={!supportsPlay}
-                              onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, playInBrowser: supportsPlay ? e.target.checked : false } : item))}
-                            />
-                            <span>This file will be played in the browser</span>
-                          </label>
-                        </div>
-                      </div>
-                      {!supportsPlay && (
-                        <p className="text-xs text-muted-foreground">Only ZIP or HTML files can run in the browser.</p>
-                      )}
-                      {d.playInBrowser && !supportsPlay && (
-                        <p className="text-xs text-red-500">Enable browser play only for WebGL-ready ZIP/HTML files.</p>
-                      )}
-                    </div>
-                  );
-                })}
-                {(files.filter(f => ['project', 'document', 'webgl'].includes(getBaseFileType(f.file_type)))).map((f) => (
-                  <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
-                    <div className="w-12 h-12 flex items-center justify-center rounded bg-muted">
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate text-sm font-medium">{f.file_name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {f.file_type === 'webgl'
-                          ? 'WebGL build (playable)'
-                          : `${FILE_CONTENT_LABEL_MAP[getContentKindFromStored(f.file_type) || (getBaseFileType(f.file_type) === 'document' ? 'document' : DEFAULT_FILE_CONTENT)]} • ${f.mime_type || 'file'}`} - {(f.file_size || 0).toLocaleString()} bytes
-                      </div>
-                    </div>
-                    <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
-                  </div>
-                ))}
-                {(files.filter(f => ['project', 'document', 'webgl'].includes(getBaseFileType(f.file_type)))).length === 0 && pendingDocs.length === 0 && (
-                  <div className="text-sm text-muted-foreground">No project files uploaded yet.</div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
         {/* Description */}
         <Card className="mb-6">
-          <CardContent className="pt-6 space-y-3">
+          <CardContent className="p-6 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Description</h2>
               <div className="flex items-center gap-1">
@@ -1072,23 +893,286 @@ export default function UploadProjectPage({
             <p className="text-xs text-muted-foreground">Tip: Basic HTML supported. Use buttons for quick formatting.</p>
           </CardContent>
         </Card>
-
-        {/* Tags */}
+        {/* Uploads (separated) */}
         <Card className="mb-6">
-          <CardContent className="pt-6 space-y-3">
-            <div className="flex items-center gap-2">
-              <Hash className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-semibold">Tags</h3>
+          <CardContent className="p-6 space-y-6">
+            {/* Media */}
+            <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <ImageIcon className="w-5 h-5" /> Media (images/videos)
+                    </h2>
+                    <div className="flex items-center gap-3">
+                        <Button type="button" variant="outline" size="sm" disabled={uploadingFiles} onClick={() => mediaInputRef.current?.click()}>
+                            Add media
+                        </Button>
+                        <div className="flex gap-2">
+                            <Input placeholder="Paste video URL" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className="h-9" />
+                            <Button type="button" onClick={handleAddVideoUrl} size="sm">Add URL</Button>
+                        </div>
+                    </div>
+                </div>
+
+                {pendingMedia.length === 0 && files.filter(f => f.file_type === 'image' || f.file_type === 'video').length === 0 ? (
+                    <div
+                        className="border-2 border-dashed border-muted-foreground/30 rounded-lg px-8 py-12 text-center cursor-pointer hover:border-primary/70 transition-colors bg-muted/20"
+                        onClick={() => mediaInputRef.current?.click()}
+                    >
+                        <input
+                          ref={mediaInputRef}
+                          type="file"
+                          accept="image/*,video/*"
+                          multiple
+                          className="hidden"
+                          style={{ display: 'none' }}
+                          onChange={(e) => chooseFiles(e.target.files)}
+                        />
+                        <div className="flex flex-col items-center justify-center gap-2 p-4 text-muted-foreground">
+                            <UploadIcon className="w-10 h-10" />
+                            <span className="font-medium">Drag & drop files or <span className="text-primary">browse</span></span>
+                            <span className="text-xs">Supported formats: JPG, PNG, GIF, MP4, etc.</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <input
+                          ref={mediaInputRef}
+                          type="file"
+                          accept="image/*,video/*"
+                          multiple
+                          className="hidden"
+                          style={{ display: 'none' }}
+                          onChange={(e) => chooseFiles(e.target.files)}
+                        />
+                        {pendingMedia.length > 0 && (
+                            <div className="space-y-3">
+                                {pendingMedia.map((m, index) => (
+                                    <div key={m.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
+                                        {m.kind === 'url' ? (
+                                            <div className="flex-shrink-0 w-16 h-16 rounded-md bg-muted flex items-center justify-center"><LinkIcon className="w-6 h-6" /></div>
+                                        ) : (
+                                            <div className="flex-shrink-0 w-16 h-16 rounded-md bg-muted flex items-center justify-center">
+                                                {m.type === 'image' ? (
+                                                    <img src={URL.createObjectURL(m.file)} alt="preview" className="w-full h-full object-cover rounded-md" />
+                                                ) : (
+                                                    <FileText className="w-6 h-6 text-muted-foreground" />
+                                                )}
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0 text-sm">
+                                            <div className="font-medium text-primary truncate">{m.kind === 'file' ? m.file.name : m.url}</div>
+                                            <div className="text-xs text-muted-foreground truncate">{m.kind === 'file' ? `${m.file.type} - ${m.file.size.toLocaleString()} bytes` : 'Remote Video'}</div>
+                                            {m.kind === 'file' && m.type === 'image' && (
+                                                <label className="inline-flex items-center gap-2 text-xs mt-1">
+                                                    <input type="checkbox" checked={!!m.isCover} onChange={(e) => togglePendingCover(m.id, e.target.checked)} />
+                                                    <span>Use as cover</span>
+                                                </label>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {pendingMedia.length > 1 && (
+                                                <div className="inline-flex items-center rounded-md border bg-muted/50">
+                                                    <Button
+                                                      type="button"
+                                                      size="icon"
+                                                      variant="ghost"
+                                                      className="rounded-none border-r border-border h-8 w-8"
+                                                      onClick={() => movePendingMedia(m.id, -1)}
+                                                      aria-label="Move up"
+                                                      title="Move up"
+                                                      disabled={index === 0}
+                                                    >
+                                                      <ChevronUp className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                      type="button"
+                                                      size="icon"
+                                                      variant="ghost"
+                                                      className="rounded-none h-8 w-8"
+                                                      onClick={() => movePendingMedia(m.id, 1)}
+                                                      aria-label="Move down"
+                                                      title="Move down"
+                                                      disabled={index === pendingMedia.length - 1}
+                                                    >
+                                                      <ChevronDown className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingMedia(prev => prev.filter(x => x.id !== m.id))}><X className="w-4 h-4" /></Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {(() => {
+                            const mediaFiles = files.filter(f => f.file_type === 'image' || f.file_type === 'video');
+                            if (mediaFiles.length === 0) return null;
+
+                            return mediaFiles.map((f, idx) => (
+                              <div key={f.id} className="flex items-center gap-4 p-3 border rounded-md bg-background">
+                                <div className="flex-shrink-0 w-16 h-16 rounded-md bg-muted flex items-center justify-center">
+                                  {f.file_type === 'image' ? (
+                                    <img src={f.file_url} alt={f.file_name} className="w-full h-full object-cover rounded-md" />
+                                  ) : (
+                                    <video src={f.file_url} className="w-full h-full object-cover rounded-md" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0 text-sm">
+                                  <div className="font-medium text-primary truncate">{f.file_name}</div>
+                                  <div className="text-xs text-muted-foreground truncate">{f.mime_type} - {(f.file_size || 0).toLocaleString()} bytes</div>
+                                  {f.file_type === 'image' && (
+                                    <label className="inline-flex items-center gap-2 text-xs mt-1">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4"
+                                        checked={!!f.is_cover}
+                                        onChange={(e) => toggleExistingCover(f.id, e.target.checked)}
+                                      />
+                                      <span>Use as cover</span>
+                                    </label>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {mediaFiles.length > 1 && (
+                                    <div className="inline-flex items-center rounded-md border bg-muted/50">
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="rounded-none border-r border-border h-8 w-8"
+                                        onClick={() => moveExistingMedia(f.id, -1)}
+                                        aria-label="Move up"
+                                        title="Move up"
+                                        disabled={idx === 0}
+                                      >
+                                        <ChevronUp className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="rounded-none h-8 w-8"
+                                        onClick={() => moveExistingMedia(f.id, 1)}
+                                        aria-label="Move down"
+                                        title="Move down"
+                                        disabled={idx === mediaFiles.length - 1}
+                                      >
+                                        <ChevronDown className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteFile(f.id)}
+                                    aria-label="Remove"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ));
+                        })()}
+                    </div>
+                )}
             </div>
-            <TagPicker value={tags} onChange={setTags} suggestions={allTagSuggestions} placeholder="Add tags (press Enter)" />
+
+            <div className="border-t border-border -mx-6"></div>
+
+            {/* Project files */}
+            <div>
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xl font-semibold flex items-center gap-2"><FileText className="w-5 h-5" /> Project Files</h2>
+                    <Button type="button" variant="outline" size="sm" disabled={uploadingFiles} onClick={() => projectInputRef.current?.click()}>{uploadingFiles ? 'Uploading...' : 'Upload files'}</Button>
+                </div>
+                
+                {pendingDocs.length === 0 && files.filter(f => !['image','video'].includes(f.file_type)).length === 0 ? (
+                    <div
+                        className="border-2 border-dashed border-muted-foreground/30 rounded-lg px-8 py-12 text-center cursor-pointer hover:border-primary/70 transition-colors bg-muted/20"
+                        onClick={() => projectInputRef.current?.click()}
+                    >
+                        <input
+                          ref={projectInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          style={{ display: 'none' }}
+                          onChange={(e) => chooseFiles(e.target.files)}
+                          accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+                        />
+                        <div className="flex flex-col items-center justify-center gap-2 p-4 text-muted-foreground">
+                            <UploadIcon className="w-10 h-10" />
+                            <span className="font-medium">Drag & drop files or <span className="text-primary">browse</span></span>
+                            <span className="text-xs">Archives, documents, executables, etc.</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <input
+                          ref={projectInputRef}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          style={{ display: 'none' }}
+                          onChange={(e) => chooseFiles(e.target.files)}
+                          accept=".zip,.rar,.7z,.tar,.gz,.dmg,.exe,.app,.pdf,.doc,.docx,.ppt,.pptx,.txt,application/zip,application/x-zip-compressed,application/x-rar-compressed,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {pendingDocs.map(d => {
+                                const supportsPlay = supportsBrowserPlay(d.file);
+                                return (
+                                    <div key={d.id} className="p-3 border rounded-md bg-background space-y-3">
+                                        <div className="flex items-start gap-3">
+                                            <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded bg-muted"><FileText className="w-5 h-5" /></div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="truncate text-sm font-medium">{d.file.name}</div>
+                                                <div className="text-xs text-muted-foreground truncate">{d.file.type} - {d.file.size.toLocaleString()} bytes</div>
+                                            </div>
+                                            <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => setPendingDocs(prev => prev.filter(x => x.id !== d.id))}><X className="w-4 h-4" /></Button>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div>
+                                                <label className="block text-xs font-semibold mb-1">File content</label>
+                                                <select className="w-full border rounded-md h-9 px-2 bg-background text-sm" value={d.contentKind} onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, contentKind: e.target.value as FileContentKind } : item))}>
+                                                    {FILE_CONTENT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                                </select>
+                                            </div>
+                                            {supportsPlay && (
+                                                <div className="flex items-end pb-1">
+                                                    <label className="flex items-center gap-2 text-sm">
+                                                        <input type="checkbox" className="h-4 w-4" checked={d.playInBrowser} onChange={(e) => setPendingDocs(prev => prev.map(item => item.id === d.id ? { ...item, playInBrowser: e.target.checked } : item))} />
+                                                        <span>Play in browser</span>
+                                                    </label>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {(files.filter(f => !['image','video'].includes(f.file_type))).map((f) => (
+                                <div key={f.id} className="flex items-center gap-3 p-3 border rounded-md bg-background">
+                                    <div className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded bg-muted"><FileText className="w-5 h-5" /></div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="truncate text-sm font-medium">{f.file_name}</div>
+                                        <div className="text-xs text-muted-foreground truncate">
+                                            {f.file_type === 'webgl' ? 'WebGL build' : `${FILE_CONTENT_LABEL_MAP[getContentKindFromStored(f.file_type) || DEFAULT_FILE_CONTENT] || 'File'}`} - {(f.file_size || 0).toLocaleString()} bytes
+                                        </div>
+                                    </div>
+                                    <Button size="icon" variant="ghost" onClick={() => handleDeleteFile(f.id)} aria-label="Delete"><X className="w-4 h-4" /></Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Team */}
         <Card className="mb-6">
-          <CardContent className="pt-6 space-y-4">
-            <h3 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" /> Team</h3>
-            <div>
+          <CardContent className="p-6 space-y-6">
+            <h3 className="text-xl font-semibold flex items-center gap-2"><Users className="w-4 h-4" /> Team</h3>
+            <div className="space-y-2">
               <label className="block text-sm font-medium mb-2">Add Member by Email</label>
               <div className="flex gap-2">
                 <Input placeholder="Enter email address" value={newMember} onChange={(e) => setNewMember(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addMember()} className="flex-1" />

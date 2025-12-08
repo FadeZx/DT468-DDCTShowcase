@@ -56,7 +56,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     hiddenProjects: [],
   });
   
-  const canExportPDF = ['admin', 'partner'].includes(viewerRole);
+  const canExportPDF = ['teacher', 'partner'].includes(viewerRole);
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)
@@ -477,9 +477,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                   <h1 className="text-2xl font-bold mb-2">{user.name}</h1>
                   <p className="text-xs text-muted-foreground -mt-1 mb-2 break-all">ID: {user.id}</p>
                   {displayRole === 'student' && (
-                    <Badge className="mb-4 bg-primary text-primary-foreground">
+                    <span className="mb-4 tag-chip tag-chip--role-student">
                       {user.year} Student
-                    </Badge>
+                    </span>
                   )}
                   
                   {user.bio && (

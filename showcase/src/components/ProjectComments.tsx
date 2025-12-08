@@ -294,9 +294,14 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-red-500 text-white';
-      case 'student': return 'bg-blue-500 text-white';
-      default: return 'bg-gray-500 text-white';
+      case 'admin':
+        return 'tag-chip--role-admin';
+      case 'partner':
+        return 'tag-chip--role-partner';
+      case 'student':
+        return 'tag-chip--role-student';
+      default:
+        return 'tag-chip--default';
     }
   };
 
@@ -442,7 +447,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
                   key={`reply-${comment.id}`}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                                    placeholder="Write a reply…"
+                                    placeholder="Write a replyï¿½"
                   rows={2}
                   dir="ltr"
                   autoFocus

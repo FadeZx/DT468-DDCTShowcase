@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { ProjectCard } from './ProjectCard';
@@ -10,15 +11,34 @@ import { SteamLikeFeatured } from './SteamLikeFeatured';
 
 const HERO_TITLE = 'WHERE IMAGINATION MEETS INNOVATION';
 
+function getCategoryChipClass(categoryOrTag: string | undefined) {
+  const key = (categoryOrTag || '').toLowerCase();
+  switch (key) {
+    case 'art':
+      return 'category-chip--art';
+    case 'animation':
+      return 'category-chip--animation';
+    case 'game':
+      return 'category-chip--game';
+    case 'simulation':
+      return 'category-chip--simulation';
+    default:
+      return '';
+  }
+}
+
 interface HomePageProps {
   projects: any[];
   onProjectClick: (projectId: string) => void;
 }
 
 export function HomePage({ projects, onProjectClick }: HomePageProps) {
+  const location = useLocation();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [typedTitle, setTypedTitle] = useState('');
+  const [hasAppliedSearchParams, setHasAppliedSearchParams] = useState(false);
+  const browseSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let currentIndex = 0;
@@ -36,6 +56,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
       window.clearInterval(intervalId);
     };
   }, []);
+
 
   const featuredProjects = projects.filter(p => p.featured).slice(0, 3);
   const recentProjects = projects.slice(0, 8);
@@ -70,6 +91,34 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
   const allTagsSet = new Set<string>();
   projects.forEach((p) => normalizeTags(p).forEach((t) => allTagsSet.add(t)));
   const allTags = Array.from(allTagsSet).sort();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const categoryParam = params.get('category');
+    const tagsParam = params.get('tags');
+
+    if (!hasAppliedSearchParams && (categoryParam || tagsParam)) {
+      if (categoryParam) {
+        const categoryExists = categories.some((c) => c.id === categoryParam);
+        if (categoryExists) {
+          setSelectedCategory(categoryParam);
+        }
+      }
+
+      if (tagsParam) {
+        const rawTags = tagsParam
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        const validTags = rawTags.filter((t) => allTags.includes(t));
+        if (validTags.length > 0) {
+          setSelectedTags(validTags);
+        }
+      }
+
+      setHasAppliedSearchParams(true);
+    }
+  }, [location.search, categories, allTags, hasAppliedSearchParams]);
 
   const filteredProjects = (selectedTags.length === 0
     ? (selectedCategory === 'all' ? projects : projects.filter(p => formatCategoryId(p.category) === selectedCategory))
@@ -151,7 +200,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
       {/* Main Content */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6 lg:gap-10">
         {/* Projects Section */}
-        <div className="md:col-span-4 order-2 md:order-1">
+        <div ref={browseSectionRef} className="md:col-span-4 order-2 md:order-1">
           <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
             <div className="mb-6">
               <h2 className="text-2xl font-semibold text-center sm:text-left">Browse Projects</h2>
@@ -173,11 +222,13 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
               <div className="flex flex-wrap gap-2 justify-center mb-6">
                 {allTags.map((t) => {
                   const active = selectedTags.includes(t);
+                  const categoryClass = getCategoryChipClass(t);
+                  const baseClass = categoryClass || 'tag-chip--default';
                   return (
                     <button
                       key={t}
                       type="button"
-                      className={`text-xs px-2 py-1 rounded border cursor-pointer ${active ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent hover:text-accent-foreground'}`}
+                      className={`tag-chip tag-chip--interactive ${baseClass} ${active ? 'tag-chip--active' : ''}`}
                       onClick={() => {
                         setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
                       }}

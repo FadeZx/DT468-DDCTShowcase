@@ -23,6 +23,7 @@ import {
   Award,
   TrendingUp,
   Download,
+  Eye,
 } from 'lucide-react';
 
 interface AnalyticsTabProps {
@@ -223,7 +224,7 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Students</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Students</p>
                 <p className="text-2xl font-bold">{totalStudents}</p>
               </div>
               <Users className="h-8 w-8 text-primary" />
@@ -250,7 +251,7 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
                 <p className="text-sm font-medium text-muted-foreground">Total Views</p>
                 <p className="text-2xl font-bold">{totalViews}</p>
               </div>
-              <Download className="h-8 w-8 text-primary" />
+              <Eye className="h-8 w-8 text-primary" />
             </div>
           </CardContent>
         </Card>

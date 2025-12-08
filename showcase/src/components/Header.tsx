@@ -102,7 +102,8 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
           {currentUser && (displayRole === 'student' || displayRole === 'partner') && (
             <Link to="/upload">
               <Button 
-                className="bg-orange-500 text-black hover:bg-orange-600 flex items-center gap-2"
+                variant="default"
+                className="rounded-full shadow-md hover:shadow-lg flex items-center gap-2"
               >
                 <Upload className="w-4 h-4" />
                 Upload Project

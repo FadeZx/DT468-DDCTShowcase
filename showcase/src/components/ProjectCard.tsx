@@ -39,6 +39,25 @@ interface ProjectCardProps {
   };
 }
 
+function getCategoryChipClass(category: string | undefined) {
+  const key = (category || '').toLowerCase();
+  switch (key) {
+    case 'art':
+      return 'category-chip--art';
+    case 'animation':
+      return 'category-chip--animation';
+    case 'game':
+      return 'category-chip--game';
+    case 'simulation':
+      return 'category-chip--simulation';
+    case 'other':
+      return 'category-chip--other';
+    default:
+      return 'tag-chip--default'; // fallback so it still looks good
+  }
+}
+
+
 export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
   const coverRef = useRef<HTMLDivElement>(null);
   const [infoHeightPx, setInfoHeightPx] = useState<number>(120);
@@ -82,8 +101,8 @@ export function ProjectCard({ project, onClick, theme }: ProjectCardProps) {
           </Badge>
         )}
         <Badge 
-          variant="secondary" 
-          className="absolute top-2 right-2 bg-secondary/80 backdrop-blur-sm project-category-badge"
+          variant="outline" 
+          className={`absolute top-2 right-2 backdrop-blur-sm project-category-badge ${getCategoryChipClass(project.category)}`}
         >
           {project.category}
         </Badge>

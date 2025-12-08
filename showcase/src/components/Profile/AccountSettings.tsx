@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Badge } from '../ui/badge-simple';
 import supabase from '../../utils/supabase/client';
 import { 
   Lock, 
@@ -164,21 +163,25 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleTagClassName = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-red-100 text-red-800 border-red-200';
-      case 'partner': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'student': return 'bg-green-100 text-green-800 border-green-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'admin':
+        return 'tag-chip tag-chip--role-admin';
+      case 'partner':
+        return 'tag-chip tag-chip--role-partner';
+      case 'student':
+        return 'tag-chip tag-chip--role-student';
+      default:
+        return 'tag-chip tag-chip--default';
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-8">
-        <div>
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold">Account Settings</h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Manage your account security and preferences
           </p>
         </div>
@@ -191,46 +194,58 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
 
       {/* Account Information */}
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <User className="h-5 w-5" />
             Account Information
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+
+        <CardContent className="pt-0">
+          <div className="space-y-6">
+
+            {/* Avatar + Name */}
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden shrink-0">
                 {user.avatar ? (
                   <img src={user.avatar} alt={user.name} className="w-16 h-16 object-cover" />
                 ) : (
-                  <img src="/placeholder-avatar.svg" alt={user.name} className="w-16 h-16" />
+                  <img src="/placeholder-avatar.svg" alt={user.name} className="w-16 h-16 object-cover" />
                 )}
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-semibold">{user.name}</h3>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl font-semibold truncate">{user.name}</h3>
+
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge className={getRoleBadgeColor(displayRole)}>
+                  <span className={getRoleTagClassName(displayRole)}>
                     <Shield className="w-3 h-3 mr-1" />
-                    {displayRole === 'student' ? `${user.year} ${displayRole}` : displayRole}
-                  </Badge>
+                    {displayRole === 'student'
+                      ? `${user.year} ${displayRole}`
+                      : displayRole}
+                  </span>
                 </div>
               </div>
-              
             </div>
-            
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-              <div className="flex items-center gap-3">
-                <Mail className="h-4 w-4 text-muted-foreground" />
+            {/* Divider */}
+            <div className="border-t pt-4" />
+
+            {/* Email + Member Since */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <div className="flex items-start gap-3">
+                <Mail className="h-4 w-4 mt-1 text-muted-foreground shrink-0" />
                 <div>
                   <p className="text-sm font-medium">Email</p>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                  <p className="text-sm text-muted-foreground break-all">
+                    {user.email}
+                  </p>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-3">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+
+              <div className="flex items-start gap-3">
+                <Calendar className="h-4 w-4 mt-1 text-muted-foreground shrink-0" />
                 <div>
                   <p className="text-sm font-medium">Member Since</p>
                   <p className="text-sm text-muted-foreground">
@@ -238,16 +253,19 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                   </p>
                 </div>
               </div>
+
             </div>
+
           </div>
         </CardContent>
       </Card>
 
+
       {/* Year Update for Students */}
       {displayRole === 'student' && (
         <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="pb-3 space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <Calendar className="h-5 w-5" />
               Update Student Year
             </CardTitle>
@@ -255,7 +273,7 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
               Change your student year code
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
@@ -299,8 +317,8 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
 
       {/* Password Change */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3 space-y-1">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <Lock className="h-5 w-5" />
             Change Password
           </CardTitle>
@@ -308,7 +326,7 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
             Update your password to keep your account secure
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {message && (
             <div className={`p-4 rounded-lg mb-6 flex items-center gap-2 ${
               message.type === 'success' 
@@ -340,12 +358,12 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                   }))}
                   placeholder="Enter your current password"
                   disabled={loading}
-                  className="pr-10"
+                  className="pl-10 pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => togglePasswordVisibility('current')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground px-2"
                   disabled={loading}
                 >
                   {showPasswords.current ? (
@@ -372,12 +390,12 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                   }))}
                   placeholder="Enter your new password"
                   disabled={loading}
-                  className="pr-10"
+                  className="pl-10 pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => togglePasswordVisibility('new')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground px-2"
                   disabled={loading}
                 >
                   {showPasswords.new ? (
@@ -407,12 +425,12 @@ export function AccountSettings({ user, onClose }: AccountSettingsProps) {
                   }))}
                   placeholder="Confirm your new password"
                   disabled={loading}
-                  className="pr-10"
+                  className="pl-10 pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => togglePasswordVisibility('confirm')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground px-2"
                   disabled={loading}
                 >
                   {showPasswords.confirm ? (

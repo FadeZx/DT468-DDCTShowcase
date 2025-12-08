@@ -11,19 +11,28 @@ type TagPickerProps = {
   maxTags?: number;
 };
 
+const normalizeTag = (raw: string) => raw.trim().replace(/^#+/, '');
+
 export function TagPicker({ value, onChange, suggestions = [], placeholder = 'Type and press Enter…', maxTags = 10 }: TagPickerProps) {
   const [text, setText] = useState('');
 
   const normalizedSuggestions = useMemo(() => {
-    const set = new Set(suggestions.map(s => s.trim().toLowerCase()).filter(Boolean));
-    value.forEach(v => set.delete(v.trim().toLowerCase()));
+    const set = new Set(
+      suggestions
+        .map(s => normalizeTag(s).toLowerCase())
+        .filter(Boolean)
+    );
+    value.forEach(v => set.delete(normalizeTag(v).toLowerCase()));
     return Array.from(set).sort();
   }, [suggestions, value]);
 
   const addTagsFromString = (raw: string) => {
-    const incoming = raw.split(/[,\n]/).map(t => t.trim()).filter(Boolean);
+    const incoming = raw
+      .split(/[\n,]/)
+      .map(t => normalizeTag(t))
+      .filter(Boolean);
     if (!incoming.length) return;
-    const current = new Set(value.map(v => v.trim().toLowerCase()));
+    const current = new Set(value.map(v => normalizeTag(v).toLowerCase()));
     const next: string[] = [...value];
     for (const t of incoming) {
       if (next.length >= maxTags) break;
@@ -51,19 +60,22 @@ export function TagPicker({ value, onChange, suggestions = [], placeholder = 'Ty
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-2">
-        {value.map((tag) => (
-          <Badge key={tag} variant="secondary" className="text-xs inline-flex items-center gap-1">
-            {tag}
-            <button
-              type="button"
-              className="ml-1 text-muted-foreground hover:text-foreground cursor-pointer"
-              aria-label={`Remove ${tag}`}
-              onClick={() => onChange(value.filter(t => t !== tag))}
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </Badge>
-        ))}
+        {value.map((tag) => {
+          const displayTag = normalizeTag(tag) || tag;
+          return (
+            <Badge key={tag} variant="secondary" className="text-xs inline-flex items-center gap-1">
+              {displayTag}
+              <button
+                type="button"
+                className="ml-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                aria-label={`Remove ${displayTag}`}
+                onClick={() => onChange(value.filter(t => t !== tag))}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </Badge>
+          );
+        })}
       </div>
       <Input
         value={text}

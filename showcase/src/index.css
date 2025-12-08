@@ -44,6 +44,159 @@
   border-radius: 10px;
 }
 
+.category-chip--art {
+  background-color: var(--color-yellow-400);
+  border-color: var(--color-yellow-400);
+  color: var(--color-black) !important;
+  transition: background-color var(--default-transition-duration) var(--default-transition-timing-function),
+              border-color var(--default-transition-duration) var(--default-transition-timing-function),
+              color var(--default-transition-duration) var(--default-transition-timing-function);
+}
+
+.category-chip--art:hover {
+  background-color: color-mix(in oklab, var(--color-yellow-400) 80%, black);
+  border-color: color-mix(in oklab, var(--color-yellow-400) 80%, black);
+}
+
+.category-chip--animation {
+  background-color: var(--color-green-500);
+  border-color: var(--color-green-500);
+  color: var(--color-white) !important;
+  transition: background-color var(--default-transition-duration) var(--default-transition-timing-function),
+              border-color var(--default-transition-duration) var(--default-transition-timing-function),
+              color var(--default-transition-duration) var(--default-transition-timing-function);
+}
+
+.category-chip--animation:hover {
+  background-color: color-mix(in oklab, var(--color-green-500) 80%, black);
+  border-color: color-mix(in oklab, var(--color-green-500) 80%, black);
+}
+
+.category-chip--game {
+  background-color: var(--color-blue-500);
+  border-color: var(--color-blue-500);
+  color: var(--color-white) !important;
+  transition: background-color var(--default-transition-duration) var(--default-transition-timing-function),
+              border-color var(--default-transition-duration) var(--default-transition-timing-function),
+              color var(--default-transition-duration) var(--default-transition-timing-function);
+}
+
+.category-chip--game:hover {
+  background-color: color-mix(in oklab, var(--color-blue-500) 80%, black);
+  border-color: color-mix(in oklab, var(--color-blue-500) 80%, black);
+}
+
+.category-chip--simulation {
+  background-color: #ec4899;
+  border-color: #ec4899;
+  color: var(--color-white) !important;
+  transition: background-color var(--default-transition-duration) var(--default-transition-timing-function),
+              border-color var(--default-transition-duration) var(--default-transition-timing-function),
+              color var(--default-transition-duration) var(--default-transition-timing-function);
+}
+
+.category-chip--simulation:hover {
+  background-color: color-mix(in oklab, #ec4899 80%, black);
+  border-color: color-mix(in oklab, #ec4899 80%, black);
+}
+
+.category-chip--other {
+  background-color: var(--color-grey);
+  border-color: var(--color-grey);
+  color: var(--color-black) !important;
+  transition: background-color var(--default-transition-duration) var(--default-transition-timing-function),
+              border-color var(--default-transition-duration) var(--default-transition-timing-function),
+              color var(--default-transition-duration) var(--default-transition-timing-function);
+}
+
+.category-chip--other:hover {
+  background-color: color-mix(in oklab, var(--color-grey) 80%, black);
+  border-color: color-mix(in oklab, var(--color-grey) 80%, black);
+}
+
+
+/* Base tag chip style — all shared default */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.tag-chip--default {
+  background-color: var(--muted);
+  border: 1px solid var(--muted);
+  color: var(--muted-foreground);
+}
+
+.tag-chip--interactive {
+  cursor: pointer;
+}
+
+.tag-chip--interactive:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Ensure category-tag chips keep their own color on hover everywhere (Home, Project, etc.) */
+.tag-chip--interactive.category-chip--art:hover {
+  background-color: color-mix(in oklab, var(--color-yellow-400) 80%, black);
+  border-color: color-mix(in oklab, var(--color-yellow-400) 80%, black);
+  color: var(--color-black) !important;
+}
+
+.tag-chip--interactive.category-chip--animation:hover {
+  background-color: color-mix(in oklab, var(--color-green-500) 80%, black);
+  border-color: color-mix(in oklab, var(--color-green-500) 80%, black);
+  color: var(--color-white) !important;
+}
+
+.tag-chip--interactive.category-chip--game:hover {
+  background-color: color-mix(in oklab, var(--color-blue-500) 80%, black);
+  border-color: color-mix(in oklab, var(--color-blue-500) 80%, black);
+  color: var(--color-white) !important;
+}
+
+.tag-chip--interactive.category-chip--simulation:hover {
+  background-color: color-mix(in oklab, #ec4899 80%, black);
+  border-color: color-mix(in oklab, #ec4899 80%, black);
+  color: var(--color-white) !important;
+}
+
+.tag-chip--interactive.category-chip--other:hover {
+  background-color: color-mix(in oklab, var(--color-grey) 80%, black);
+  border-color: color-mix(in oklab, var(--color-grey) 80%, black);
+  color: var(--color-black) !important;
+}
+
+.tag-chip--active {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+/* Role-specific tag chips */
+.tag-chip--role-student {
+  background-color: #f97316; /* orange */
+  border-color: #fdba74;
+  color: #111827;
+}
+
+.tag-chip--role-admin {
+  background-color: #ef4444; /* red */
+  border-color: #fecaca;
+  color: #ffffff;
+}
+
+.tag-chip--role-partner {
+  background-color: #a855f7; /* purple */
+  border-color: #e9d5ff;
+  color: #ffffff;
+}
+
 /* Smooth scroll for in-page anchors (e.g. Featured Projects link) */
 html {
   scroll-behavior: smooth;

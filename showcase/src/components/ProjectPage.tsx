@@ -47,6 +47,25 @@ const formatContentLabel = (value?: string | null) => {
   return FILE_CONTENT_LABELS.download;
 };
 
+function getCategoryChipClass(category: string | undefined) {
+  const key = (category || '').toLowerCase();
+  switch (key) {
+    case 'art':
+      return 'category-chip--art';
+    case 'animation':
+      return 'category-chip--animation';
+    case 'game':
+      return 'category-chip--game';
+    case 'simulation':
+      return 'category-chip--simulation';
+    default:
+      return '';
+  }
+}
+
+function formatCategoryId(category: string | undefined) {
+  return (category || 'Others').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
 
 type GalleryMediaItem = { type: 'image' | 'video'; url: string; name?: string; thumb?: string };
 
@@ -420,11 +439,16 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold select-text">{project.title}</h1>
-            <Badge className="bg-primary text-primary-foreground">
-              {project.category}
-            </Badge>
+            {project.category && (
+              <Link
+                to={`/?category=${encodeURIComponent(formatCategoryId(project.category))}`}
+                className={`tag-chip tag-chip--interactive ${getCategoryChipClass(project.category) || 'tag-chip--default'}`}
+              >
+                {project.category}
+              </Link>
+            )}
             {project.visibility === 'public' && (
-              <Badge variant="outline">Public</Badge>
+              <span className="tag-chip tag-chip--default">Public</span>
             )}
           </div>
           <p className="text-muted-foreground select-text">{project.description}</p>
@@ -458,7 +482,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-1">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
           {/* Steam-like hero media carousel with custom thumbnail strip */}
@@ -583,16 +607,14 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
 
           {/* Project Details */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="files">Files</TabsTrigger>
-              <TabsTrigger value="description">Description</TabsTrigger>
-              <TabsTrigger value="comments">Comments</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6 mt-6">
               {primaryWebglFile && primaryWebglUrl && (
-                <Card>
+                <Card className="hidden">
                   <CardHeader>
                     <CardTitle>Play In Browser</CardTitle>
                   </CardHeader>
@@ -620,71 +642,104 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               )}
 
               <Card>
-                <CardHeader>
-                  <CardTitle>About This Project</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="font-bold">About This Project</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pt-0 space-y-3">
                   <p className="text-muted-foreground leading-relaxed">
                     {project.description || 'No short description available for this project.'}
                   </p>
+
+                  {(() => {
+                    const raw = project.tags;
+                    const tags = Array.isArray(raw)
+                      ? raw
+                      : (typeof raw === 'string'
+                        ? raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+                        : []);
+                    const hasCategory = !!project.category;
+                    if (!tags.length && !hasCategory) return null;
+                    const categoryId = formatCategoryId(project.category);
+                    const heading =
+                      hasCategory && tags.length > 0
+                        ? 'Category & Tags'
+                        : hasCategory
+                          ? 'Category'
+                          : 'Tags';
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-semibold text-foreground">{heading}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {hasCategory && (
+                              <Link
+                                key={`category-${categoryId || 'category'}`}
+                                to={categoryId ? `/?category=${encodeURIComponent(categoryId)}` : '/'}
+                                className={`tag-chip tag-chip--interactive ${getCategoryChipClass(project.category) || 'tag-chip--default'}`}
+                              >
+                                {project.category}
+                              </Link>
+                            )}
+
+                            {tags.length > 0 &&
+                              tags.map((tag: string, index: number) => {
+                                const normalizedTag = tag.trim().replace(/^#+/, '').toLowerCase();
+                                if (!normalizedTag) return null;
+                                const categoryClass = getCategoryChipClass(tag);
+                                const baseClass = categoryClass || 'tag-chip--default';
+                                const search = `/?tags=${encodeURIComponent(normalizedTag)}${categoryId ? `&category=${encodeURIComponent(categoryId)}` : ''}`;
+                                return (
+                                  <Link
+                                    key={`${normalizedTag}-${index}`}
+                                    to={search}
+                                    className={`tag-chip tag-chip--interactive ${baseClass}`}
+                                  >
+                                    {normalizedTag}
+                                  </Link>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
-              <Card>
+
+
+              <Card className="hidden">
+                {/*
                 <CardHeader>
-                  <CardTitle>Technical Details</CardTitle>
+                  <CardTitle>Description</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold mb-2">Category</h4>
-                    <Badge variant="outline">{project.category}</Badge>
-                  </div>
-                  
-                  {project.tools && typeof project.tools === 'string' && project.tools.trim() && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Tools Used</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {project.tools.split(',').map((tool: string, index: number) => (
-                          <Badge key={index} variant="outline">{tool.trim()}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {project.technologies && typeof project.technologies === 'string' && project.technologies.trim() && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Technologies</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {project.technologies.split(',').map((tech: string, index: number) => (
-                          <Badge key={index} variant="secondary">{tech.trim()}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {project.members && project.members.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold mb-2">Members</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {project.members.map((member: any) => (
-                          <Badge key={member.id} variant="outline">
-                            {member.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="font-semibold mb-2">Created</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(project.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
+                */}
+                <CardContent className="p-6">
+                  {fullDescriptionHtml ? (
+                    <div
+                      className="text-sm leading-relaxed space-y-3 description-html"
+                      dangerouslySetInnerHTML={{ __html: fullDescriptionHtml }}
+                    />
+                  ) : (
+                    <p className="text-muted-foreground text-sm">
+                      No description has been provided for this project yet.
                     </p>
-                  </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="hidden">
+                
+                {/* <CardHeader>
+                  <CardTitle></CardTitle>
+                </CardHeader> */}
+                <CardContent className="p-6">
+                  <ProjectComments 
+                    projectId={project.id}
+                    currentUser={currentUser}
+                    supabase={supabase}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>
@@ -698,37 +753,62 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               ) : (
                 <div className="space-y-4">
                   {webglFiles.length > 0 && (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base">Playable Builds</CardTitle>
-                        <p className="text-sm text-muted-foreground">Launch WebGL builds directly in your browser.</p>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold leading-none">Playable Builds</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Launch WebGL builds directly in your browser.
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs uppercase tracking-widest">
+                          WebGL
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-3">
                         {webglFiles.map((file, index) => {
                           const key = webglKey(file);
                           const url = webglUrls[key];
+                          const isPrimary = primaryWebglFile && file.id === primaryWebglFile.id;
+
                           return (
-                            <div key={file.id || index} className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium">{file.file_name || 'WebGL Build'}</p>
-                                <p className="text-sm text-muted-foreground">Playable in browser</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button variant="outline" size="sm" asChild disabled={!url}>
-                                  <a href={url || '#'} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink className="mr-2 h-4 w-4" />
-                                    Open
-                                  </a>
-                                </Button>
-                                {primaryWebglFile && file.id === primaryWebglFile.id && (
-                                  <Badge variant="secondary">Shown in overview</Badge>
-                                )}
-                              </div>
-                            </div>
+                            <Card key={file.id || index}>
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-9 h-9 flex items-center justify-center rounded-md bg-black/5">
+                                      <Play className="w-4 h-4 text-muted-foreground" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-sm truncate">
+                                        {file.file_name || 'WebGL Build'}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Playable in browser  b7 WebGL
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" asChild disabled={!url}>
+                                      <a href={url || '#'} target="_blank" rel="noopener noreferrer">
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        Open
+                                      </a>
+                                    </Button>
+                                    {isPrimary && (
+                                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                                        Shown in overview
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
                           );
                         })}
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   )}
 
                   {downloadableFiles.length > 0 ? (
@@ -753,7 +833,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                       ))}
                     </div>
                   ) : webglFiles.length === 0 ? (
-                    <Card>
+                    <Card className="hidden">
                       <CardContent className="text-center py-8">
                         <p className="text-muted-foreground">No downloadable files available for this project.</p>
                       </CardContent>
@@ -764,7 +844,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             </TabsContent>
 
             <TabsContent value="description" className="mt-6">
-              <Card>
+              <Card className="hidden">
                 <CardHeader>
                   <CardTitle>Description</CardTitle>
                 </CardHeader>
@@ -808,18 +888,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               )}
               
               <div className="flex flex-wrap gap-3">
-                {hasFilesTabContent && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab('files')}
-                    className="flex-1 min-w-[140px]"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Files ({downloadableFiles.length + webglFiles.length})
-                  </Button>
-                )}
-
                 <Button
                   variant="outline"
                   size="sm"
@@ -841,7 +909,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
           {/* Project Stats */}
           <Card>
             <CardHeader>
-              <CardTitle>Project Stats</CardTitle>
+              <CardTitle className="font-bold">Project Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
@@ -891,7 +959,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
           {/* Members */}
           <Card>
             <CardHeader>
-              <CardTitle>Members</CardTitle>
+              <CardTitle className="font-bold">Members</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {(() => {
@@ -909,55 +977,48 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                     .filter((m: any) => m.id !== ownerId)
                     .map((m: any) => ({ ...m, isOwner: false })),
                 ];
-                return combined.map((m: any) => (
-                  <div key={m.id || Math.random()} className="flex items-center justify-between">
+                return combined.map((m: any) => {
+                  const hasProfile = !!m.id;
+                  const content = (
                     <div className="flex items-center gap-3">
-                      <Avatar>
+                      <Avatar className="w-8 h-8">
                         <AvatarImage src={m.avatar || undefined} />
                         <AvatarImage src="/placeholder-avatar.svg" />
                         <AvatarFallback>{m.name?.[0] || 'U'}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <Link to={m.id ? `/users/${m.id}` : '#'} className="font-semibold hover:text-primary cursor-pointer inline-flex items-center gap-1">
+                        <div className="font-semibold inline-flex items-center gap-1">
                           {m.name}
                           {m.isOwner && <Crown className="w-3 h-3 text-amber-500" />}
-                        </Link>
-                        { (m.jobRole) && (
+                        </div>
+                        {m.jobRole && (
                           <p className="text-xs text-muted-foreground">{m.jobRole}</p>
                         )}
                       </div>
                     </div>
-                  </div>
-                ));
+                  );
+
+                  return hasProfile ? (
+                    <Link
+                      key={m.id}
+                      to={`/users/${m.id}`}
+                      className="flex items-center justify-between p-2 rounded-md hover:bg-gray-100 dark:hover:bg-input/50 transition-colors"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div
+                      key={m.id || Math.random()}
+                      className="flex items-center justify-between p-2 rounded-md"
+                    >
+                      {content}
+                    </div>
+                  );
+                });
               })()}
             </CardContent>
           </Card>
 
-          {/* Tags */}
-          {(() => {
-            const t = project.tags;
-            const arr = Array.isArray(t)
-              ? t
-              : (typeof t === 'string' ? t.split(',').map((s:string)=>s.trim()).filter(Boolean) : []);
-            return arr.length > 0;
-          })() && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Tags</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    Array.isArray(project.tags)
-                      ? project.tags
-                      : (typeof project.tags === 'string' ? project.tags.split(',').map((s:string)=>s.trim()).filter(Boolean) : [])
-                    ).map((tag: string, index: number) => (
-                      <Badge key={index} variant="outline" className="text-xs">{tag}</Badge>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
     </div>
