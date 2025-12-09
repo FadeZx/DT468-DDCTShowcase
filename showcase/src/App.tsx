@@ -256,20 +256,22 @@ function UserProfileWrapper({ projects, currentUser, onProjectClick, onNavigate 
     let active = true;
     async function load() {
       if (!userId) { setLoadedUser(null); setLoadingUser(false); return; }
-      // 1) Try global cache
+      // 1) Try global cache (preview)
       const cached = users.find((u: any) => u.id === userId);
-      if (cached) { if (active) { setLoadedUser(cached); setLoadingUser(false); } return; }
-      // 2) Try derive from projects (author or members)
-      const fromProjects = (() => {
-        for (const p of projects) {
-          if (p?.author?.id === userId) return p.author;
-          const m = (p?.members || []).find((x: any) => x.id === userId);
-          if (m) return m;
-        }
-        return null;
-      })();
-      if (fromProjects) { if (active) { setLoadedUser(fromProjects); setLoadingUser(false); } }
-      // 3) Fetch from Supabase
+      if (cached && active) { setLoadedUser(cached); }
+      // 2) Try derive from projects (author or members) as preview
+      if (!cached && active) {
+        const fromProjects = (() => {
+          for (const p of projects) {
+            if (p?.author?.id === userId) return p.author;
+            const m = (p?.members || []).find((x: any) => x.id === userId);
+            if (m) return m;
+          }
+          return null;
+        })();
+        if (fromProjects && active) { setLoadedUser(fromProjects); }
+      }
+      // 3) Fetch full profile to ensure all fields are available
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -277,16 +279,17 @@ function UserProfileWrapper({ projects, currentUser, onProjectClick, onNavigate 
           .eq('id', userId)
           .single();
         if (error) throw error;
-        if (active) { setLoadedUser(data); setLoadingUser(false); }
+        if (active) { setLoadedUser(data); }
       } catch {
-        if (active) setLoadingUser(false);
+        // ignore and keep whatever preview we have
       }
+      if (active) setLoadingUser(false);
     }
     load();
     return () => { active = false; };
   }, [userId, projects]);
 
-  if (loadingUser) {
+  if (loadingUser && !loadedUser) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-8">
         <p className="text-center">Loading profile…</p>

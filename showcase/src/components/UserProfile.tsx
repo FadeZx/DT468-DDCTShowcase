@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -42,10 +42,16 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     [avatarPreview, editedUser.avatar, user.avatar]
   );
   const displayRole = user.semanticRole || user.role;
-  const viewerRoleRaw = currentUser ? (currentUser.semanticRole || currentUser.role) : '';
+  const viewerRoleRaw = currentUser
+    ? (currentUser.semanticRole ||
+      currentUser.role ||
+      (currentUser as any)?.user_metadata?.role)
+    : '';
   const viewerRole = `${viewerRoleRaw || ''}`.toLowerCase();
-  const isPrivilegedViewer = ['admin', 'partner', 'teacher'].includes(viewerRole);
-  const limitedView = !isOwnProfile && !isPrivilegedViewer;
+  const isPartnerLike = viewerRole === 'partner' || (viewerRole === 'student' && (!currentUser?.year || currentUser?.year === 'Unknown'));
+  const isPrivilegedViewer = ['admin', 'partner', 'teacher'].includes(viewerRole) || isPartnerLike;
+  // Only guests viewing others should see the limited profile
+  const limitedView = !isOwnProfile && viewerRole === 'guest';
 
   const [theme, setTheme] = useState<ProfileTheme>({
     colors: { background: '#0b0b0b', text: '#ffffff', accent: '#7c3aed', cardBackground: '#111827' },
@@ -56,7 +62,7 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     hiddenProjects: [],
   });
   
-  const canExportPDF = ['teacher', 'partner'].includes(viewerRole);
+  const canExportPDF = ['teacher', 'partner', 'admin'].includes(viewerRole);
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)
@@ -67,6 +73,14 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
   const orderMap = new Map(theme.projectOrder.map((id, idx) => [id, idx] as const));
   const orderedProjects = combinedProjects.slice().sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
   const visibleProjects = orderedProjects.filter(p => !theme.hiddenProjects.includes(p.id));
+
+  // Sync local editable user state when viewing a different profile
+  useEffect(() => {
+    setEditedUser(user);
+    setAvatarPreview(null);
+    setAvatarFile(null);
+    setIsEditing(false);
+  }, [user]);
 
 
   const handleSave = async () => {
@@ -91,29 +105,30 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
         if (updateError) throw updateError;
         setEditedUser((prev: any) => ({ ...prev, avatar: publicUrl }));
       }
-      // Update profile fields in DB
-      const updates: any = {};
-      if (editedUser.name !== user.name) updates.name = editedUser.name;
-      if (displayRole === 'student' && editedUser.year !== user.year) {
-        updates.year = editedUser.year;
-      }
-      if (editedUser.bio !== user.bio) updates.bio = editedUser.bio || null;
-      if (Array.isArray(editedUser.skills)) updates.skills = editedUser.skills;
-      if (editedUser.email && editedUser.email !== user.email) updates.email = editedUser.email;
-      if (editedUser.location !== user.location) updates.location = editedUser.location || null;
-      if (editedUser.majors !== user.majors) updates.majors = editedUser.majors || null;
-      if (editedUser.github !== user.github) updates.github = editedUser.github || null;
-      if (editedUser.linkedin !== user.linkedin) updates.linkedin = editedUser.linkedin || null;
-      if (editedUser.portfolio !== user.portfolio) updates.portfolio = editedUser.portfolio || null;
-      if (Object.keys(updates).length > 0) {
-        const { error: updateInfoError } = await supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', user.id);
-        if (updateInfoError) throw updateInfoError;
-      }
+      // Update profile fields in DB (always persist full set so all viewers see current info)
+      const updates: any = {
+        id: user.id,
+        role: user.role || 'student',
+        name: editedUser.name || user.name || '',
+        year: displayRole === 'student' ? (editedUser.year || null) : null,
+        bio: editedUser.bio || null,
+        skills: Array.isArray(editedUser.skills) ? editedUser.skills : [],
+        email: editedUser.email || user.email || null,
+        location: editedUser.location || null,
+        majors: editedUser.majors || null,
+        github: editedUser.github || null,
+        linkedin: editedUser.linkedin || null,
+        portfolio: editedUser.portfolio || null,
+        avatar: editedUser.avatar || user.avatar || null,
+      };
+      const { error: updateInfoError, data: savedProfile } = await supabase
+        .from('profiles')
+        .upsert(updates, { onConflict: 'id' })
+        .select('*')
+        .single();
+      if (updateInfoError) throw updateInfoError;
 
-      const merged = { ...user, ...editedUser };
+      const merged = { ...user, ...editedUser, ...savedProfile };
       onUserUpdated?.(merged);
       setIsEditing(false);
     } catch (err: any) {
@@ -187,6 +202,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
       if (displayRole === 'student' && user.year) addLabelValue('Year', user.year);
       addLabelValue('Location', user.location);
       addLabelValue('Bio', user.bio);
+      addLabelValue('GitHub', user.github);
+      addLabelValue('LinkedIn', user.linkedin);
+      addLabelValue('Portfolio', user.portfolio);
       if (Array.isArray(user.skills) && user.skills.length) {
         addLabelValue('Skills', user.skills.join(', '));
       }
@@ -271,12 +289,26 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
               )}
             </CardContent>
           </Card>
+        </div>
 
-          <Card className="lg:col-span-3">
-            <CardContent className="p-4 text-center text-sm text-muted-foreground">
-              Additional profile details and projects are visible only to the owner, partners, teachers, or admins.
-            </CardContent>
-          </Card>
+        <div className="mt-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Projects</h2>
+            <p className="text-sm text-muted-foreground">Limited profile view shows projects only.</p>
+          </div>
+          {combinedProjects.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {combinedProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} onClick={onProjectClick} />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                No projects available.
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     );
@@ -474,16 +506,16 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
                 </div>
               ) : (
                 <>
-                  <h1 className="text-2xl font-bold mb-2">{user.name}</h1>
+                  <h1 className="text-2xl font-bold mb-2">{editedUser.name || user.name}</h1>
                   <p className="text-xs text-muted-foreground -mt-1 mb-2 break-all">ID: {user.id}</p>
                   {displayRole === 'student' && (
                     <span className="mb-4 tag-chip tag-chip--role-student">
-                      {user.year} Student
+                      {(editedUser.year || user.year) || 'Student'} Student
                     </span>
                   )}
                   
-                  {user.bio && (
-                    <p className="text-muted-foreground mb-4">{user.bio}</p>
+                  {(editedUser.bio || user.bio) && (
+                    <p className="text-muted-foreground mb-4">{editedUser.bio || user.bio}</p>
                   )}
                   
                   <div className="flex flex-col gap-2">
