@@ -1,11 +1,11 @@
-# DT468 DDCT Showcase
+# DT468 DDCT Showcase 
 
 **Authors:** [Your Name(s)]
 **Deployment URL:** [Link to your live site, if applicable]
 
 A portfolio showcase for the DDCT / DT468 course, built with React and Supabase. This application allows students to upload their projects (including media, files, and descriptions) and enables teachers/admins to browse, filter, and manage the submissions.
 
-## Tech Stack
+## Tech Stack 💻
 
 ### Core Technologies
 - **Framework:** React (with TypeScript)
@@ -21,9 +21,10 @@ A portfolio showcase for the DDCT / DT468 course, built with React and Supabase.
 - **UI Components:** A custom library inspired by `shadcn/ui` (Buttons, Cards, Tabs, Dialogs).
 - **Image Gallery:** `slick-carousel` for the "Steam-like" project media gallery.
 - **Data Visualization:** A charting library for the admin analytics dashboard.
+- **Animation:** CSS transitions and keyframe animations via `tailwindcss-animate` for interactive UI elements and component states.
 - **File Handling:** `jszip` for bundling project files for download.
 
-## Getting Started
+## Getting Started ✨
 
 Follow these steps to get the project running on your local machine for development and testing purposes.
 
@@ -77,7 +78,7 @@ npm run dev
 
 The app should be available at `http://localhost:5173` or the port Vite shows in the console.
 
-## Main Features
+## Main Features 📝
 
 - **Authentication** – secure login/logout for students, partners and administrators using Supabase Auth.
 - **Home Page** – category and tag-based browsing of student projects.
@@ -85,7 +86,7 @@ The app should be available at `http://localhost:5173` or the port Vite shows in
 - **Upload Flow** – students can upload projects with media, tags and files.
 - **Admin Dashboard** – admin-only views for analytics, project management and account settings.
 
-## Scripts
+## Scripts ⌨️
 
 Common npm scripts (check `package.json` for the full list):
 
@@ -93,10 +94,9 @@ Common npm scripts (check `package.json` for the full list):
 - `npm run build` – build the production bundle.
 - `npm run preview` – preview the production build locally.
 
-## Folder Structure (high level)
+## Folder Structure (high level) 📁
 
 - `showcase/src/components` – React components (HomePage, ProjectPage, Admin tabs, etc.).
 - `showcase/src/utils` – utility functions (e.g. file storage helpers, likes helpers).
 - `showcase/src/hooks` – React hooks (e.g. `useProjectLikes`).
 - `showcase/src/index.css` – Tailwind and custom design tokens.
-

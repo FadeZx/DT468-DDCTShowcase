@@ -23,7 +23,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  year: string;
+  year: string | null;
   role: 'student' | 'partner' | 'admin';
   avatar?: string;
   bio?: string;
@@ -110,7 +110,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       filtered = filtered.filter(user => 
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.year.includes(searchTerm)
+        (user.year ?? '').includes(searchTerm)
       );
     }
 

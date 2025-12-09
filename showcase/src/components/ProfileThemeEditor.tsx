@@ -99,7 +99,7 @@ export function ProfileThemeEditor({
           <div>
             <Label>Font Family</Label>
             <Select value={theme.typography.fontFamily}
-              onValueChange={(val) => setTheme({ ...theme, typography: { ...theme.typography, fontFamily: val } })}>
+              onValueChange={(val: string) => setTheme({ ...theme, typography: { ...theme.typography, fontFamily: val } })}>
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Select font" />
               </SelectTrigger>
@@ -113,12 +113,12 @@ export function ProfileThemeEditor({
           <div>
             <Label>Base Font Size ({theme.typography.fontSize}px)</Label>
             <Slider value={[theme.typography.fontSize]} min={12} max={20}
-              onValueChange={(vals) => setTheme({ ...theme, typography: { ...theme.typography, fontSize: vals[0] } })} />
+              onValueChange={(vals: number[]) => setTheme({ ...theme, typography: { ...theme.typography, fontSize: vals[0] } })} />
           </div>
           <div>
             <Label>Heading Size ({theme.typography.headingSize}px)</Label>
             <Slider value={[theme.typography.headingSize]} min={16} max={32}
-              onValueChange={(vals) => setTheme({ ...theme, typography: { ...theme.typography, headingSize: vals[0] } })} />
+              onValueChange={(vals: number[]) => setTheme({ ...theme, typography: { ...theme.typography, headingSize: vals[0] } })} />
           </div>
         </CardContent>
       </Card>
@@ -153,12 +153,12 @@ export function ProfileThemeEditor({
           <div>
             <Label>Project Columns ({theme.layout.projectColumns})</Label>
             <Slider value={[theme.layout.projectColumns]} min={1} max={5}
-              onValueChange={(vals) => setTheme({ ...theme, layout: { ...theme.layout, projectColumns: vals[0] } })} />
+              onValueChange={(vals: number[]) => setTheme({ ...theme, layout: { ...theme.layout, projectColumns: vals[0] } })} />
           </div>
           <div>
             <Label>Card Border Radius ({theme.layout.borderRadius}px)</Label>
             <Slider value={[theme.layout.borderRadius]} min={0} max={24}
-              onValueChange={(vals) => setTheme({ ...theme, layout: { ...theme.layout, borderRadius: vals[0] } })} />
+              onValueChange={(vals: number[]) => setTheme({ ...theme, layout: { ...theme.layout, borderRadius: vals[0] } })} />
           </div>
         </CardContent>
       </Card>

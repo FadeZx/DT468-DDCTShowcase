@@ -3,13 +3,12 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Separator } from './ui/separator';
 import {
   ArrowLeft, Download, Heart, Share2, Eye, Calendar,
   Github, ExternalLink, Play, Users, Edit, Trash2, ChevronLeft, ChevronRight, Crown
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { AspectRatio } from './ui/aspect-ratio';
 import Slider from 'react-slick';
@@ -80,7 +79,7 @@ interface ProjectPageProps {
 }
 
 export function ProjectPage({ project, onBack, currentUser, onEditProject, onDeleteProject, supabase, onProjectUpdate }: ProjectPageProps) {
-  const [activeTab, setActiveTab] = useState('overview');
+  const navigate = useNavigate();
   const [projectFiles, setProjectFiles] = useState<any[]>(project.media?.all || project.media || []);
   const [loading, setLoading] = useState(!(project.media?.all?.length || project.media?.length));
   const [webglUrls, setWebglUrls] = useState<Record<string, string>>({});
@@ -266,7 +265,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
         }
         return { type: file.file_type as 'image' | 'video', url, name: file.file_name, thumb: safeThumb };
       })
-      .filter((m): m is GalleryMediaItem => !!m.url);
+      .filter((m) => !!m.url);
   }, [mediaFilesSorted]);
 
   const [galleryMedia, setGalleryMedia] = useState<GalleryMediaItem[]>(baseGalleryMedia);
@@ -387,7 +386,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     const base = getBaseFileType(file.file_type);
     return base === 'project' || base === 'document';
   });
-  const hasFilesTabContent = downloadableFiles.length > 0 || webglFiles.length > 0;
   const handleDownload = async (file: any) => {
     try {
       let url = '';
@@ -429,6 +427,25 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
     }
   };
 
+  const parseTags = () => {
+    const raw = project.tags;
+    const tagsArray = Array.isArray(raw)
+      ? raw
+      : (typeof raw === 'string'
+        ? raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : []);
+
+    return tagsArray
+      .map((tag: string) => {
+        const label = tag.trim().replace(/^#+/, '') || tag;
+        const value = label.toLowerCase();
+        return { label, value };
+      })
+      .filter((t) => !!t.value);
+  };
+
+  const tags = parseTags();
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
       {/* Header */}
@@ -446,9 +463,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               >
                 {project.category}
               </Link>
-            )}
-            {project.visibility === 'public' && (
-              <span className="tag-chip tag-chip--default">Public</span>
             )}
           </div>
           <p className="text-muted-foreground select-text">{project.description}</p>
@@ -518,7 +532,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                       </div>
                     )}
 
-                    {/* Nav buttons + autoplay toggle */}
+                    {/* Nav buttons */}
                     {galleryMedia.length > 1 && (
                       <>
                         <button
@@ -543,47 +557,41 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 </AspectRatio>
               </div>
 
-              {/* Steam-like thumbnail strip */}
-{false && (
-  <div className="relative w-full bg-muted/30">
-    <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
-    <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
+              {/* Steam-like thumbnail strip (disabled for now) */}
+              {false && (
+                <div className="relative w-full bg-muted/30">
+                  <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                  <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-muted/60 to-transparent" />
 
-    <div className="p-3">
-      <Slider ref={(s: any) => (sliderRef.current = s)} {...sliderSettings}>
-       {/* inside Slider */}
-{galleryMedia.map((m, realIndex) => (
-  // slick wraps children — ensure this wrapper centers the button
-  <div key={realIndex} className="slick-thumb-wrap flex items-center justify-center">
-    <button
-      type="button"
-      onClick={() => setActiveIndex(realIndex)}
-      aria-label={`Go to media ${realIndex + 1}`}
-      // button must be block so it fully occupies the box
-      className={`thumb-item block w-[240px] h-[135px] flex-none rounded-md overflow-hidden border transition-transform duration-200 cursor-pointer
-        ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary scale-105' : 'border-transparent hover:border-primary/40 hover:scale-105'}`}
-    >
-      <img
-        src={(m as any).thumb || m.url || '/placeholder-project.svg'}
-        alt={m.name || `Media ${realIndex + 1}`}
-        // ensure image fills and is centered
-        className="thumb-img w-full h-full object-cover object-center block"
-        loading="lazy"
-        decoding="async"
-      />
-      {m.type === 'video' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <Play className="text-white w-6 h-6 drop-shadow" />
-        </div>
-      )}
-    </button>
-  </div>
-))}
+                  <div className="p-3">
+                    <Slider ref={(s: any) => (sliderRef.current = s)} {...sliderSettings}>
+                      {galleryMedia.map((m, realIndex) => (
+                        <div key={realIndex} className="slick-thumb-wrap flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setActiveIndex(realIndex)}
+                            aria-label={`Go to media ${realIndex + 1}`}
+                            className={`thumb-item block w-[240px] h-[135px] flex-none rounded-md overflow-hidden border transition-transform duration-200 cursor-pointer
+                              ${realIndex === activeIndex ? 'ring-2 ring-primary border-primary scale-105' : 'border-transparent hover:border-primary/40 hover:scale-105'}`}
+                          >
+                            <img
+                              src={(m as any).thumb || m.url || '/placeholder-project.svg'}
+                              alt={m.name || `Media ${realIndex + 1}`}
+                              className="thumb-img w-full h-full object-cover object-center block"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            {m.type === 'video' && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                <Play className="text-white w-6 h-6 drop-shadow" />
+                              </div>
+                            )}
+                          </button>
+                        </div>
+                      ))}
+                    </Slider>
+                  </div>
 
-      </Slider>
-    </div>
-
-                  {/* left/right arrows trigger slider */}
                   <button
                     type="button"
                     aria-label="Previous thumbnails"
@@ -605,272 +613,50 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
             </CardContent>
           </Card>
 
-          {/* Project Details */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="files">Files</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="overview" className="space-y-6 mt-6">
-              {primaryWebglFile && primaryWebglUrl && (
-                <Card className="hidden">
-                  <CardHeader>
-                    <CardTitle>Play In Browser</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <AspectRatio ratio={16 / 9}>
-                      <iframe
-                        src={primaryWebglUrl}
-                        title="WebGL Build"
-                        allow="fullscreen; xr-spatial-tracking; gamepad; gyroscope; accelerometer"
-                        allowFullScreen
-                        className="w-full h-full rounded-md border"
-                      />
-                    </AspectRatio>
-                    <div className="flex items-center justify-between text-sm text-muted-foreground gap-3">
-                      <span className="truncate">{primaryWebglFile.file_name || 'WebGL Build'}</span>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={primaryWebglUrl} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          Open in new tab
-                        </a>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="font-bold">About This Project</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  <p className="text-muted-foreground leading-relaxed">
-                    {project.description || 'No short description available for this project.'}
-                  </p>
-
-                  {(() => {
-                    const raw = project.tags;
-                    const tags = Array.isArray(raw)
-                      ? raw
-                      : (typeof raw === 'string'
-                        ? raw.split(',').map((s: string) => s.trim()).filter(Boolean)
-                        : []);
-                    const hasCategory = !!project.category;
-                    if (!tags.length && !hasCategory) return null;
-                    const categoryId = formatCategoryId(project.category);
-                    const heading =
-                      hasCategory && tags.length > 0
-                        ? 'Category & Tags'
-                        : hasCategory
-                          ? 'Category'
-                          : 'Tags';
-
-                    return (
-                      <div className="space-y-3">
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-semibold text-foreground">{heading}</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {hasCategory && (
-                              <Link
-                                key={`category-${categoryId || 'category'}`}
-                                to={categoryId ? `/?category=${encodeURIComponent(categoryId)}` : '/'}
-                                className={`tag-chip tag-chip--interactive ${getCategoryChipClass(project.category) || 'tag-chip--default'}`}
-                              >
-                                {project.category}
-                              </Link>
-                            )}
-
-                            {tags.length > 0 &&
-                              tags.map((tag: string, index: number) => {
-                                const normalizedTag = tag.trim().replace(/^#+/, '').toLowerCase();
-                                if (!normalizedTag) return null;
-                                const categoryClass = getCategoryChipClass(tag);
-                                const baseClass = categoryClass || 'tag-chip--default';
-                                const search = `/?tags=${encodeURIComponent(normalizedTag)}${categoryId ? `&category=${encodeURIComponent(categoryId)}` : ''}`;
-                                return (
-                                  <Link
-                                    key={`${normalizedTag}-${index}`}
-                                    to={search}
-                                    className={`tag-chip tag-chip--interactive ${baseClass}`}
-                                  >
-                                    {normalizedTag}
-                                  </Link>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-
-
-
-              <Card className="hidden">
-                {/*
-                <CardHeader>
-                  <CardTitle>Description</CardTitle>
-                </CardHeader>
-                */}
-                <CardContent className="p-6">
-                  {fullDescriptionHtml ? (
-                    <div
-                      className="text-sm leading-relaxed space-y-3 description-html"
-                      dangerouslySetInnerHTML={{ __html: fullDescriptionHtml }}
-                    />
-                  ) : (
-                    <p className="text-muted-foreground text-sm">
-                      No description has been provided for this project yet.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="hidden">
-                
-                {/* <CardHeader>
-                  <CardTitle></CardTitle>
-                </CardHeader> */}
-                <CardContent className="p-6">
-                  <ProjectComments 
-                    projectId={project.id}
-                    currentUser={currentUser}
-                    supabase={supabase}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="files" className="mt-6">
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className="text-sm text-muted-foreground">Loading files...</p>
-                </div>
+          {/* Project description (HTML) + tags dropdown */}
+          <Card>
+            {/*description */}
+            <CardContent className="pt-6">
+              {fullDescriptionHtml ? (
+                <div
+                  className="text-sm leading-relaxed space-y-3 description-html"
+                  dangerouslySetInnerHTML={{ __html: fullDescriptionHtml }}
+                />
               ) : (
-                <div className="space-y-4">
-                  {webglFiles.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-base font-semibold leading-none">Playable Builds</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Launch WebGL builds directly in your browser.
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-xs uppercase tracking-widest">
-                          WebGL
-                        </Badge>
-                      </div>
-
-                      <div className="space-y-3">
-                        {webglFiles.map((file, index) => {
-                          const key = webglKey(file);
-                          const url = webglUrls[key];
-                          const isPrimary = primaryWebglFile && file.id === primaryWebglFile.id;
-
-                          return (
-                            <Card key={file.id || index}>
-                              <CardContent className="p-4">
-                                <div className="flex items-center justify-between gap-4">
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className="w-9 h-9 flex items-center justify-center rounded-md bg-black/5">
-                                      <Play className="w-4 h-4 text-muted-foreground" />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="font-medium text-sm truncate">
-                                        {file.file_name || 'WebGL Build'}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        Playable in browser  b7 WebGL
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" asChild disabled={!url}>
-                                      <a href={url || '#'} target="_blank" rel="noopener noreferrer">
-                                        <ExternalLink className="mr-2 h-4 w-4" />
-                                        Open
-                                      </a>
-                                    </Button>
-                                    {isPrimary && (
-                                      <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                                        Shown in overview
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {downloadableFiles.length > 0 ? (
-                    <div className="space-y-3">
-                      {downloadableFiles.map((file, index) => (
-                        <Card key={index}>
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium">{file.file_name}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {formatContentLabel(file.file_type)} - {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
-                                </p>
-                              </div>
-                              <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>
-                                <Download className="w-4 h-4 mr-2" />
-                                Download
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : webglFiles.length === 0 ? (
-                    <Card className="hidden">
-                      <CardContent className="text-center py-8">
-                        <p className="text-muted-foreground">No downloadable files available for this project.</p>
-                      </CardContent>
-                    </Card>
-                  ) : null}
-                </div>
+                <p className="text-muted-foreground text-sm pt-4">
+                  No description has been provided for this project yet.
+                </p>
               )}
-            </TabsContent>
 
-            <TabsContent value="description" className="mt-6">
-              <Card className="hidden">
-                <CardHeader>
-                  <CardTitle>Description</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {fullDescriptionHtml ? (
-                    <div
-                      className="text-sm leading-relaxed space-y-3 description-html"
-                      dangerouslySetInnerHTML={{ __html: fullDescriptionHtml }}
-                    />
-                  ) : (
-                    <p className="text-muted-foreground text-sm">
-                      No description has been provided for this project yet.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+            </CardContent>
+          </Card>
 
-            <TabsContent value="comments" className="mt-6">
-              <ProjectComments 
-                projectId={project.id}
-                currentUser={currentUser}
-                supabase={supabase}
-              />
-            </TabsContent>
-          </Tabs>
+          {tags.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="font-bold">Tags</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag) => (
+                    <Link
+                      key={tag.value}
+                      to={`/?tags=${encodeURIComponent(tag.value)}`}
+                      className="tag-chip tag-chip--interactive tag-chip--default"
+                    >
+                      {tag.label}
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <ProjectComments 
+            projectId={project.id}
+            currentUser={currentUser}
+            supabase={supabase}
+          />
         </div>
 
         {/* Sidebar */}
@@ -917,7 +703,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <Eye className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Views</span>
                 </div>
-                <span className="font-semibold">{project.stats?.views || 0}</span>
+                <span className="text-sm font-semibold">{project.stats?.views || 0}</span>
               </div>
               
               <div className="flex items-center justify-between">
@@ -925,7 +711,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <Download className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Downloads</span>
                 </div>
-                <span className="font-semibold">{project.downloads || 0}</span>
+                <span className="text-sm font-semibold">{project.downloads || 0}</span>
               </div>
               
               <div className="flex items-center justify-between">
@@ -933,7 +719,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   <Heart className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm">Likes</span>
                 </div>
-                <span className="font-semibold">
+                <span className="text-sm font-semibold">
                   {likesLoading ? '...' : likesCount}
                 </span>
               </div>
@@ -953,6 +739,96 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                   })}
                 </span>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Files (moved above Members) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-bold">Files</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loading ? (
+                <div className="text-center py-4">
+                  <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-sm text-muted-foreground">Loading files...</p>
+                </div>
+              ) : (
+                <>
+                  {webglFiles.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          Launch WebGL builds directly in your browser.
+                        </p>
+                        <Badge variant="outline" className="text-xs uppercase tracking-widest">
+                          WebGL
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-3">
+                        {webglFiles.map((file, index) => {
+                          const key = webglKey(file);
+                          const url = webglUrls[key];
+                          const isPrimary = primaryWebglFile && file.id === primaryWebglFile.id;
+
+                          return (
+                            <Card key={file.id || index}>
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="min-w-0">
+                                      <p className="font-medium text-sm truncate">
+                                        {file.file_name || 'WebGL Build'}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Playable in browser · WebGL
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" asChild disabled={!url}>
+                                      <a href={url || '#'} target="_blank" rel="noopener noreferrer">
+                                        <Play className="mr-2 h-4 w-4" />
+                                        Play
+                                      </a>
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {downloadableFiles.length > 0 ? (
+                    <div className="space-y-3">
+                      {downloadableFiles.map((file, index) => (
+                        <Card key={index}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{file.file_name}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {formatContentLabel(file.file_type)} - {file.file_size ? `${(file.file_size / 1024 / 1024).toFixed(2)} MB` : 'Unknown size'}
+                                </p>
+                              </div>
+                              <Button variant="outline" size="sm" onClick={() => handleDownload(file)}>
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : webglFiles.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No files available for this project.</p>
+                  ) : null}
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -1018,14 +894,9 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
               })()}
             </CardContent>
           </Card>
-
         </div>
       </div>
+
     </div>
   );
 }
-
-
-
-
-

@@ -38,6 +38,7 @@ interface Comment {
   };
   likes_count?: number;
   is_liked?: boolean;
+  replies?: Comment[];
 }
 
 interface ProjectCommentsProps {
@@ -108,7 +109,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
       if (error) throw error;
 
       // Get comment IDs to fetch likes
-      const commentIds = commentsData?.map(c => c.id) || [];
+      const commentIds = (commentsData as Comment[] | null)?.map((c) => c.id) || [];
       
       // Fetch like counts for all comments
       const { data: likesData } = await supabase
@@ -116,16 +117,26 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
         .select('comment_id, user_id')
         .in('comment_id', commentIds);
 
+      type CommentLike = {
+        comment_id: string;
+        user_id: string;
+      };
+
+      const likeRows = (likesData || []) as CommentLike[];
+
       // Fetch current user's likes
       const userLikes = currentUser ? 
-        (likesData?.filter(like => like.user_id === currentUser.id).map(like => like.comment_id) || []) : 
+        (likeRows
+          .filter((like) => like.user_id === currentUser.id)
+          .map((like) => like.comment_id)
+        ) : 
         [];
 
       // Count likes per comment
-      const likeCounts = likesData?.reduce((acc, like) => {
+      const likeCounts = likeRows.reduce<Record<string, number>>((acc, like) => {
         acc[like.comment_id] = (acc[like.comment_id] || 0) + 1;
         return acc;
-      }, {} as Record<string, number>) || {};
+      }, {});
 
       // Build simple thread: roots with replies
       const all: Comment[] = (commentsData || []).map((c: any) => ({
@@ -558,7 +569,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
       {/* New Comment Form */}
       {currentUser ? (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-6">
             <div className="flex gap-3">
               <Avatar className="w-8 h-8 flex-shrink-0">
                 <AvatarImage src={currentUser.avatar} />
@@ -592,7 +603,7 @@ export function ProjectComments({ projectId, currentUser, supabase }: ProjectCom
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-4 text-center">
+          <CardContent className="p-6 text-center">
             <p className="text-muted-foreground mb-3">Sign in to leave a comment</p>
             <Button variant="outline">Sign In</Button>
           </CardContent>
