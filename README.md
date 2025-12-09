@@ -83,6 +83,7 @@ As a result:
 - Some files may fail to load during peak hours
 - Real-time and storage operations might be temporarily throttled
 ```bash
-  This issue is not related to the application code, but rather to the hosting limits of the current Supabase plan.
+  This issue is not related to the application code,
+  but rather to the hosting limits of the current Supabase plan.
   The system performs normally when deployed on a Supabase instance with sufficient egress bandwidth.
 ```
