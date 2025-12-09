@@ -48,11 +48,11 @@ Once the repository is cloned, open a terminal in the project's root directory. 
 npm install
 ```
 
-### 2. Configure environment
+### 4. Configure environment
 
 Create a `.env` or `.env.local` file follows `.env.example` poject root with your Supabase keys, for example:
 
-### 3. Run the dev server
+### 5. Run the dev server
 
 ```bash
 npm run dev

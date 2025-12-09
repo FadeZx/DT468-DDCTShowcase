@@ -17,7 +17,7 @@ export function AdminDashboard({ projects, users }: AdminDashboardProps) {
         <div>
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
           <p className="text-muted-foreground">
-            Monitor DDCT project submissions, student engagement, and platform activity.
+            Monitor DDCT projects, Analytics, Events, and Account Management.
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

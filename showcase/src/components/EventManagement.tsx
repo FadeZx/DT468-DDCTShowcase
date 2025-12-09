@@ -13,6 +13,7 @@ interface EventRecord {
   title: string;
   description: string;
   cover_image?: string;
+  coverImage?: string;
   date?: string;
   time?: string;
   location?: string;
@@ -39,17 +40,37 @@ interface EventForm {
   socialHashtag: string;
   tags: string[];
   coverImage: string;
+  coverFile: File | null;
   visibility: "draft" | "public";
   unlimitedAttendees: boolean;
   videoLink: string;
 }
 
-const toDateOnly = (startAt: string) => (startAt ? startAt.split("T")[0] : null);
-const toTime24h = (startAt: string) => {
+const toDateOnly = (startAt: string | null | undefined) => {
   if (!startAt) return null;
-  const d = new Date(startAt);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(11, 16); // HH:MM
+  const s = String(startAt);
+  if (s.includes("T")) return s.split("T")[0];
+  if (s.includes(" ")) return s.split(" ")[0];
+  return s;
+};
+const toTime24h = (startAt: string | null | undefined) => {
+  if (!startAt) return null;
+  const d = new Date(startAt as any);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().slice(11, 16); // HH:MM
+  }
+  const s = String(startAt);
+  const match = s.match(/^(\\d{1,2}):(\\d{2})(?:\\s*(AM|PM))?/i);
+  if (match) {
+    let [_, hh, mm, mer] = match;
+    let hours = parseInt(hh, 10);
+    if (mer) {
+      const isPM = mer.toUpperCase() === "PM";
+      hours = (hours % 12) + (isPM ? 12 : 0);
+    }
+    return `${hours.toString().padStart(2, "0")}:${mm}`;
+  }
+  return null;
 };
 const toInputDateTime = (date?: string, time?: string | null) => {
   if (!date) return "";
@@ -67,6 +88,29 @@ const toInputDateTime = (date?: string, time?: string | null) => {
     return `${date}T${hourStr}:${mm}`;
   }
   return `${date}T00:00`;
+};
+
+const uploadEventCover = async (file: File, eventId: string) => {
+  const primaryBucket = "event-files";
+  const fallbackBucket = "project-files";
+  const filePath = `events/${eventId}/cover-${Date.now()}-${file.name}`;
+
+  const tryUpload = async (bucket: string) => {
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, file, { upsert: true });
+    if (uploadError) throw uploadError;
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    return pub.publicUrl;
+  };
+
+  try {
+    return await tryUpload(primaryBucket);
+  } catch (err: any) {
+    if ([400, 401, 403, 404].includes(err?.status)) {
+      console.warn(`Primary bucket '${primaryBucket}' failed (${err?.status}). Falling back to '${fallbackBucket}'.`);
+      return await tryUpload(fallbackBucket);
+    }
+    throw err;
+  }
 };
 
 export function EventManagement() {
@@ -93,11 +137,12 @@ export function EventManagement() {
     description: "",
     socialHashtag: "",
     tags: [],
-    coverImage: "",
-    visibility: "draft",
-    unlimitedAttendees: false,
-    videoLink: "",
-  });
+      coverImage: "",
+      coverFile: null,
+      visibility: "draft",
+      unlimitedAttendees: false,
+      videoLink: "",
+    });
 
   const resetForm = () =>
     setNewEvent({
@@ -115,6 +160,7 @@ export function EventManagement() {
       socialHashtag: "",
       tags: [],
       coverImage: "",
+      coverFile: null,
       visibility: "draft",
       unlimitedAttendees: false,
       videoLink: "",
@@ -202,17 +248,31 @@ export function EventManagement() {
           category: newEvent.category,
           featured: newEvent.featured,
         };
-        const { data, error } = editingId
-          ? await supabase.from("events").update(payload).eq("id", editingId).select("*").single()
-          : await supabase.from("events").insert(payload).select("*").single();
-        if (error) throw error;
-        if (data) {
-          setEvents((prev) =>
-            editingId
-              ? prev.map((e) => (e.id === editingId ? (data as EventRecord) : e))
-              : [...prev, data as EventRecord]
-          );
+        const eventId = editingId || (globalThis.crypto?.randomUUID?.() || `${Date.now()}`);
+
+        if (newEvent.coverFile) {
+          try {
+            const publicUrl = await uploadEventCover(newEvent.coverFile, eventId);
+            payload.cover_image = publicUrl;
+          } catch (uploadErr) {
+            console.error("Cover upload failed", uploadErr);
+            alert("Failed to upload cover image. Please try again.");
+            setSaving(false);
+            return;
+          }
         }
+
+        const newRow: EventRecord = { id: eventId, ...payload };
+        const op = editingId
+          ? await supabase.from("events").update(payload, { returning: "minimal" }).eq("id", editingId)
+          : await supabase.from("events").insert({ id: eventId, ...payload }, { returning: "minimal" });
+        if (op.error) throw op.error;
+
+        setEvents((prev) =>
+          editingId
+            ? prev.map((e) => (e.id === editingId ? { ...e, ...newRow } : e))
+            : [...prev, newRow]
+        );
         resetForm();
         setEditingId(null);
         setMode("list");
@@ -282,9 +342,21 @@ export function EventManagement() {
                 <div key={event.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center gap-4 flex-1">
                     <img
-                      src={event.coverImage || event.cover_image || "/placeholder-event.svg"}
+                      src={
+                        (() => {
+                          const candidate = event.coverImage || event.cover_image;
+                          if (candidate && candidate.startsWith("blob:")) return "/placeholder-event.svg";
+                          return candidate || "/placeholder-event.svg";
+                        })()
+                      }
                       alt={event.title}
                       className="w-16 h-16 rounded object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (target.dataset.fallback) return;
+                        target.dataset.fallback = "1";
+                        target.src = "/placeholder-event.svg";
+                      }}
                     />
                     <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -335,25 +407,26 @@ export function EventManagement() {
                       size="sm"
                       onClick={() => {
                         setEditingId(event.id);
-                        setNewEvent({
-                          title: event.title || "",
-                          shortDescription: event.description || "",
-                          url: "",
-                          startAt: toInputDateTime(event.date, event.time),
+                      setNewEvent({
+                        title: event.title || "",
+                        shortDescription: event.description || "",
+                        url: "",
+                        startAt: toInputDateTime(event.date, event.time),
                           endAt: "",
                           location: event.location || "",
                           host: event.host || "",
                           maxAttendees: event.max_attendees ?? 50,
                           category: event.category || "Workshop",
                           featured: !!event.featured,
-                          description: event.long_description || "",
-                          socialHashtag: "",
-                          tags: [],
-                          coverImage: event.cover_image || "",
-                          visibility: "draft",
-                          unlimitedAttendees: event.max_attendees === null,
-                          videoLink: "",
-                        });
+                        description: event.long_description || "",
+                        socialHashtag: "",
+                        tags: [],
+                        coverImage: event.cover_image || "",
+                        coverFile: null,
+                        visibility: "draft",
+                        unlimitedAttendees: event.max_attendees === null,
+                        videoLink: "",
+                      });
                         setMode("create");
                       }}
                     >
@@ -436,7 +509,7 @@ export function EventManagement() {
                     const file = e.target.files?.[0];
                     if (file) {
                       const objectUrl = URL.createObjectURL(file);
-                      setNewEvent({ ...newEvent, coverImage: objectUrl });
+                      setNewEvent({ ...newEvent, coverImage: objectUrl, coverFile: file });
                     }
                   }}
                 />

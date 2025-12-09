@@ -954,7 +954,11 @@ export default function App() {
               } />
               
               <Route path="/events/:eventId" element={
-                <EventPage eventId={location.pathname.split('/').pop() || ''} onBack={handleEventBack} />
+                <EventPage
+                  eventId={location.pathname.split('/').pop() || ''}
+                  onBack={handleEventBack}
+                  currentUser={currentUser}
+                />
               } />
               
               <Route path="/admin/events" element={

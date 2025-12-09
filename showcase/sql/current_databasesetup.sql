@@ -10,6 +10,34 @@ CREATE TABLE public.comment_likes (
   CONSTRAINT comment_likes_comment_id_fkey FOREIGN KEY (comment_id) REFERENCES public.project_comments(id),
   CONSTRAINT comment_likes_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.event_registrations (
+  event_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  registered_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT event_registrations_pkey PRIMARY KEY (event_id, user_id),
+  CONSTRAINT event_registrations_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT event_registrations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  description text,
+  long_description text,
+  cover_image text,
+  date date,
+  time text,
+  location text,
+  host text,
+  attendees integer DEFAULT 0,
+  max_attendees integer,
+  category text,
+  featured boolean DEFAULT false,
+  requirements ARRAY,
+  agenda ARRAY,
+  speakers ARRAY,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT events_pkey PRIMARY KEY (id)
+);
 CREATE TABLE public.profile_avatars (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,

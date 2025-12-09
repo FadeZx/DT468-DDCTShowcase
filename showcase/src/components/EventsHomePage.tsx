@@ -93,9 +93,21 @@ export function EventsHomePage({ onEventClick }: EventsHomePageProps) {
                 >
                   <div className="relative">
                     <img
-                      src={event.coverImage || event.cover_image || '/placeholder-event.svg'}
+                      src={
+                        (() => {
+                          const candidate = event.coverImage || event.cover_image;
+                          if (candidate && candidate.startsWith('blob:')) return '/placeholder-event.svg';
+                          return candidate || '/placeholder-event.svg';
+                        })()
+                      }
                       alt={event.title}
                       className="w-full h-48 object-cover rounded-t-lg"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (target.dataset.fallback) return;
+                        target.dataset.fallback = '1';
+                        target.src = '/placeholder-event.svg';
+                      }}
                     />
                     {event.featured && (
                       <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">

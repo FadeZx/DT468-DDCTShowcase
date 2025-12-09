@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Calendar, MapPin, Users, Clock, ArrowLeft, Share2, Bookmark } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, ArrowLeft, Share2, Bookmark, Edit } from 'lucide-react';
 import supabase from '../utils/supabase/client';
 
 interface Event {
@@ -20,6 +20,7 @@ interface Event {
   maxAttendees?: number;
   category?: string;
   featured?: boolean;
+  show_participants?: boolean;
   long_description?: string;
   longDescription?: string;
   requirements?: string[];
@@ -30,13 +31,15 @@ interface Event {
 interface EventPageProps {
   eventId: string;
   onBack: () => void;
+  currentUser?: any;
 }
 
-export function EventPage({ eventId, onBack }: EventPageProps) {
+export function EventPage({ eventId, onBack, currentUser }: EventPageProps) {
   const [event, setEvent] = useState<Event | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [participants, setParticipants] = useState<any[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -66,6 +69,41 @@ export function EventPage({ eventId, onBack }: EventPageProps) {
     };
   }, [eventId]);
 
+  useEffect(() => {
+    const loadParticipants = async () => {
+      if (!eventId) return;
+      try {
+        const { data: regs, error: regErr } = await supabase
+          .from('event_registrations')
+          .select('user_id')
+          .eq('event_id', eventId);
+        if (regErr) {
+          if ((regErr as any).status === 404) {
+            console.warn('event_registrations table not found. Create it with columns event_id (uuid), user_id (uuid).');
+            setParticipants([]);
+            setIsRegistered(false);
+            return;
+          }
+          throw regErr;
+        }
+        const ids = (regs || []).map((r: any) => r.user_id).filter(Boolean);
+        if (ids.length === 0) { setParticipants([]); setIsRegistered(false); return; }
+        const { data: profiles, error: profErr } = await supabase
+          .from('profiles')
+          .select('id, name, email, avatar, year')
+          .in('id', ids);
+        if (profErr) throw profErr;
+        setParticipants(profiles || []);
+        if (currentUser?.id) {
+          setIsRegistered(ids.includes(currentUser.id));
+        }
+      } catch (e) {
+        console.error('Failed to load participants', e);
+      }
+    };
+    loadParticipants();
+  }, [eventId, currentUser?.id]);
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'TBD';
     const date = new Date(dateString);
@@ -78,9 +116,54 @@ export function EventPage({ eventId, onBack }: EventPageProps) {
   };
 
   const handleRegister = () => {
-    setIsRegistered(true);
-    // TODO: Call API to register user
+    if (!currentUser?.id) {
+      alert('Please sign in to register.');
+      return;
+    }
+    (async () => {
+      try {
+        const { error } = await supabase
+          .from('event_registrations')
+          .upsert({ event_id: eventId, user_id: currentUser.id }, { onConflict: 'event_id,user_id' });
+        if (error) {
+          if ((error as any).status === 404) {
+            alert('Registration table missing. Create event_registrations (event_id uuid, user_id uuid) and allow inserts.');
+            return;
+          }
+          throw error;
+        }
+        setIsRegistered(true);
+        setParticipants((prev) => {
+          if (prev.some((p) => p.id === currentUser.id)) return prev;
+          return [
+            ...prev,
+            {
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              avatar: currentUser.avatar,
+              year: currentUser.year,
+            },
+          ];
+        });
+      } catch (e) {
+        console.error('Registration failed', e);
+        alert('Failed to register for this event. Please try again.');
+      }
+    })();
   };
+
+  const viewerRole = (currentUser?.semanticRole || currentUser?.role || '').toLowerCase();
+  const showParticipantsFlag = event?.show_participants;
+  const canSeeParticipants = (showParticipantsFlag === undefined || showParticipantsFlag === null || showParticipantsFlag === true)
+    || viewerRole === 'admin';
+  const isAdmin = viewerRole === 'admin';
+
+  const coverSrc = (() => {
+    const candidate = event?.coverImage || event?.cover_image;
+    if (candidate && candidate.startsWith('blob:')) return '/placeholder-event.svg';
+    return candidate || '/placeholder-event.svg';
+  })();
 
   if (!event && !loading) {
     return (
@@ -105,6 +188,17 @@ export function EventPage({ eventId, onBack }: EventPageProps) {
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back to Events
       </Button>
+      {isAdmin && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-2"
+          onClick={() => (window.location.href = `/admin/events`)}
+        >
+          <Edit className="mr-2 h-4 w-4" />
+          Edit Event
+        </Button>
+      )}
       {loading && (
         <div className="text-center py-12 text-muted-foreground">Loading event…</div>
       )}
@@ -112,9 +206,15 @@ export function EventPage({ eventId, onBack }: EventPageProps) {
         <>
           <div className="relative mb-8">
             <img 
-              src={event.coverImage || event.cover_image || '/placeholder-event.svg'} 
+              src={coverSrc}
               alt={event.title}
               className="w-full h-64 object-cover rounded-lg"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.dataset.fallback) return;
+                target.dataset.fallback = '1';
+                target.src = '/placeholder-event.svg';
+              }}
             />
             <div className="absolute top-4 left-4 flex gap-2">
               {event.featured && (
@@ -231,6 +331,44 @@ export function EventPage({ eventId, onBack }: EventPageProps) {
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          <div className="mt-10">
+            <Card>
+              <CardHeader>
+                <CardTitle>Participants</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!canSeeParticipants && (
+                  <p className="text-sm text-muted-foreground">
+                    Participants are hidden for this event. Admins can view the list.
+                  </p>
+                )}
+                {canSeeParticipants && (
+                  participants.length > 0 ? (
+                    <div className="space-y-3">
+                      {participants.map((p) => (
+                        <div key={p.id} className="flex items-center gap-3 border rounded-md p-3">
+                          <img
+                            src={p.avatar || '/placeholder-avatar.svg'}
+                            alt={p.name}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{p.name || 'Participant'}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {p.email || 'No email'} {p.year ? `• ${p.year}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No participants yet.</p>
+                  )
+                )}
+              </CardContent>
+            </Card>
           </div>
         </>
       )}
