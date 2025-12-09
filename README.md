@@ -23,6 +23,7 @@ A portfolio showcase for the DDCT / DT468 course, built with React and Supabase.
 - **Data Visualization:** A charting library for the admin analytics dashboard.
 - **Animation:** CSS transitions and keyframe animations via `tailwindcss-animate` for interactive UI elements and component states.
 - **File Handling:** `jszip` for bundling project files for download.
+- **Graph Rendering:** `recharts` for admin dashboard charts (bar, pie, and line visualizations).
 
 ## Getting Started ✨
 
@@ -39,18 +40,6 @@ Follow these steps to get the project running on your local machine for developm
 
 You can clone the repository using either the command line or GitHub Desktop.
 
-**Using the Command Line:**
-```bash
-git clone https://github.com/your-username/your-repository-name.git
-cd your-repository-name
-```
-
-**Using GitHub Desktop:**
-1. Go to the repository URL in your browser.
-2. Click the green **`< > Code`** button.
-3. Select **Open with GitHub Desktop**.
-4. Choose a local path and click **Clone**.
-
 ### 3. Install Dependencies
 
 Once the repository is cloned, open a terminal in the project's root directory. (In GitHub Desktop, you can go to `Repository > Open in Command Prompt`). Then, run the following command:
@@ -61,14 +50,7 @@ npm install
 
 ### 2. Configure environment
 
-Create a `.env` or `.env.local` file in the project root with your Supabase keys, for example:
-
-```bash
-VITE_SUPABASE_URL=your-project-url
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-(Use the same variable names you already use in your existing Supabase client.)
+Create a `.env` or `.env.local` file follows `.env.example` poject root with your Supabase keys, for example:
 
 ### 3. Run the dev server
 
@@ -76,27 +58,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 npm run dev
 ```
 
-The app should be available at `http://localhost:5173` or the port Vite shows in the console.
+## Main Features
 
-## Main Features 📝
+- **Authentication** - secure login/logout for students, partners and administrators using Supabase Auth.
+- **Home Page** - category and tag-based browsing of student projects.
+- **Project Page** - Steam-like gallery, HTML description, files/downloads, likes and comments.
+- **Upload Flow** - students can upload projects with media, tags and files.
+- **Events** - events home page lists Supabase-backed events; event detail page shows full info; admins can create/edit/delete events in Event Management.
+- **Profiles & Resume** - students can set up their profile info; partners/admins can view full profiles and export resume summaries as PDF.
+- **Admin Dashboard** - admin-only analytics (Recharts), project management, events management, and account settings with quick logins.
 
-- **Authentication** – secure login/logout for students, partners and administrators using Supabase Auth.
-- **Home Page** – category and tag-based browsing of student projects.
-- **Project Page** – Steam-like gallery, HTML description, files/downloads, likes and comments.
-- **Upload Flow** – students can upload projects with media, tags and files.
-- **Admin Dashboard** – admin-only views for analytics, project management and account settings.
-
-## Scripts ⌨️
-
-Common npm scripts (check `package.json` for the full list):
-
-- `npm run dev` – start the Vite dev server.
-- `npm run build` – build the production bundle.
-- `npm run preview` – preview the production build locally.
-
-## Folder Structure (high level) 📁
-
-- `showcase/src/components` – React components (HomePage, ProjectPage, Admin tabs, etc.).
-- `showcase/src/utils` – utility functions (e.g. file storage helpers, likes helpers).
-- `showcase/src/hooks` – React hooks (e.g. `useProjectLikes`).
-- `showcase/src/index.css` – Tailwind and custom design tokens.
