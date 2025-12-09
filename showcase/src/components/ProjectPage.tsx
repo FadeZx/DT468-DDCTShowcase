@@ -757,14 +757,6 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                 <>
                   {webglFiles.length > 0 && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground">
-                          Launch WebGL builds directly in your browser.
-                        </p>
-                        <Badge variant="outline" className="text-xs uppercase tracking-widest">
-                          WebGL
-                        </Badge>
-                      </div>
 
                       <div className="space-y-3">
                         {webglFiles.map((file, index) => {
@@ -782,7 +774,7 @@ export function ProjectPage({ project, onBack, currentUser, onEditProject, onDel
                                         {file.file_name || 'WebGL Build'}
                                       </p>
                                       <p className="text-xs text-muted-foreground">
-                                        Playable in browser · WebGL
+                                        Playable in browser
                                       </p>
                                     </div>
                                   </div>
