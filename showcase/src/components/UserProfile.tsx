@@ -62,7 +62,9 @@ export function UserProfile({ user, projects, isOwnProfile, currentUser, onProje
     hiddenProjects: [],
   });
   
-  const canExportPDF = ['teacher', 'partner', 'admin'].includes(viewerRole);
+  const canExportPDF =
+    (viewerRole === 'student' && isOwnProfile) ||
+    (['teacher', 'partner', 'admin'].includes(viewerRole) && !isOwnProfile);
   const userProjects = projects.filter(p => p.author.id === user.id);
   const collaborativeProjects = projects.filter(p => 
     p.members?.some((m: any) => m.id === user.id)

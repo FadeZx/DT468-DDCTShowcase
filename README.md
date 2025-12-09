@@ -65,6 +65,21 @@ npm run dev
 - **Project Page** - Steam-like gallery, HTML description, files/downloads, likes and comments.
 - **Upload Flow** - students can upload projects with media, tags and files.
 - **Events** - events home page lists Supabase-backed events; event detail page shows full info; admins can create/edit/delete events in Event Management.
-- **Profiles & Resume** - students can set up their profile info; partners/admins can view full profiles and export resume summaries as PDF.
+- **Profiles & Resume** - students can set up their profile info and export their own resume PDF; partners/admins can view full profiles and export resume summaries for others.
 - **Admin Dashboard** - admin-only analytics (Recharts), project management, events management, and account settings with quick logins.
 
+
+## ⚠️ Important Note About Database Performance
+
+The account has exceeded its monthly egress (outbound data) limit, which affects how quickly media and project files load.
+
+As a result:
+
+Images, videos, and project assets may load slowly
+
+Some files may fail to load during peak hours
+
+Real-time and storage operations might be temporarily throttled
+
+This issue is not related to the application code, but rather to the hosting limits of the current Supabase plan.
+The system performs normally when deployed on a Supabase instance with sufficient egress bandwidth.
