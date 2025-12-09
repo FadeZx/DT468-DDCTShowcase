@@ -1,10 +1,8 @@
 # DT468 DDCT Showcase Website 💗
 
-**Authors:** Pichamon Wiangsamur & Kantapich Panpein
-
 **Deployment URL:** https://dt-468-ddct-showcase.vercel.app/
 
-**Video Presentation & Other File** https://drive.google.com/drive/folders/1BtIqaEzlHUJiing4vjUHkQDuuK3Dhd5Y?usp=drive_link
+**Video Presentation & Other:** https://drive.google.com/drive/folders/1BtIqaEzlHUJiing4vjUHkQDuuK3Dhd5Y?usp=drive_link
 
 ```bash
 A portfolio showcase for the DDCT / DT468 course, built with React and Supabase.
