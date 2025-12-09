@@ -22,7 +22,6 @@ interface EventRecord {
   category?: string;
   featured?: boolean;
   long_description?: string;
-  show_participants?: boolean;
 }
 
 interface EventForm {
@@ -43,8 +42,32 @@ interface EventForm {
   visibility: "draft" | "public";
   unlimitedAttendees: boolean;
   videoLink: string;
-  showParticipants: boolean;
 }
+
+const toDateOnly = (startAt: string) => (startAt ? startAt.split("T")[0] : null);
+const toTime24h = (startAt: string) => {
+  if (!startAt) return null;
+  const d = new Date(startAt);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(11, 16); // HH:MM
+};
+const toInputDateTime = (date?: string, time?: string | null) => {
+  if (!date) return "";
+  if (!time) return `${date}T00:00`;
+  // try to normalize "10:00 AM" or "10:00" to HH:MM
+  const match = time.match(/^(\\d{1,2}):(\\d{2})(?:\\s*(AM|PM))?/i);
+  if (match) {
+    let [_, hh, mm, mer] = match;
+    let hours = parseInt(hh, 10);
+    if (mer) {
+      const isPM = mer.toUpperCase() === "PM";
+      hours = (hours % 12) + (isPM ? 12 : 0);
+    }
+    const hourStr = hours.toString().padStart(2, "0");
+    return `${date}T${hourStr}:${mm}`;
+  }
+  return `${date}T00:00`;
+};
 
 export function EventManagement() {
   const navigate = useNavigate();
@@ -74,7 +97,6 @@ export function EventManagement() {
     visibility: "draft",
     unlimitedAttendees: false,
     videoLink: "",
-    showParticipants: true,
   });
 
   const resetForm = () =>
@@ -96,7 +118,6 @@ export function EventManagement() {
       visibility: "draft",
       unlimitedAttendees: false,
       videoLink: "",
-      showParticipants: true,
     });
 
   useEffect(() => {
@@ -171,19 +192,15 @@ export function EventManagement() {
         const payload: any = {
           title: newEvent.title,
           description: newEvent.shortDescription || newEvent.description,
-          long_description: newEvent.description || null,
           cover_image: newEvent.coverImage || "/placeholder-event.svg",
-          date: newEvent.startAt || null,
-          time: newEvent.startAt
-            ? new Date(newEvent.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : null,
+          date: toDateOnly(newEvent.startAt),
+          time: toTime24h(newEvent.startAt),
           location: newEvent.location || null,
           host: newEvent.host || null,
           attendees: 0,
           max_attendees: newEvent.unlimitedAttendees ? null : newEvent.maxAttendees,
           category: newEvent.category,
           featured: newEvent.featured,
-          show_participants: newEvent.showParticipants,
         };
         const { data, error } = editingId
           ? await supabase.from("events").update(payload).eq("id", editingId).select("*").single()
@@ -201,7 +218,8 @@ export function EventManagement() {
         setMode("list");
       } catch (e) {
         console.error("Failed to save event", e);
-        alert("Failed to save event. Please try again.");
+        const msg = (e?.message || e?.error?.message || e?.details || "Failed to save event. Please try again.") as string;
+        alert(msg);
       } finally {
         setSaving(false);
       }
@@ -321,7 +339,7 @@ export function EventManagement() {
                           title: event.title || "",
                           shortDescription: event.description || "",
                           url: "",
-                          startAt: event.date || "",
+                          startAt: toInputDateTime(event.date, event.time),
                           endAt: "",
                           location: event.location || "",
                           host: event.host || "",
@@ -335,7 +353,6 @@ export function EventManagement() {
                           visibility: "draft",
                           unlimitedAttendees: event.max_attendees === null,
                           videoLink: "",
-                          showParticipants: event.show_participants ?? true,
                         });
                         setMode("create");
                       }}
@@ -505,18 +522,6 @@ export function EventManagement() {
                 onChange={(e) => setNewEvent({ ...newEvent, featured: e.target.checked })}
               />
               Highlight this event
-            </label>
-          </div>
-
-          <div className="space-y-2 border rounded-md p-4">
-            <p className="text-base font-semibold">Settings</p>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={newEvent.showParticipants}
-                onChange={(e) => setNewEvent({ ...newEvent, showParticipants: e.target.checked })}
-              />
-              Show participants publicly
             </label>
           </div>
 
