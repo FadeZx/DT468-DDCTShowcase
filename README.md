@@ -100,7 +100,3 @@ Common npm scripts (check `package.json` for the full list):
 - `showcase/src/hooks` – React hooks (e.g. `useProjectLikes`).
 - `showcase/src/index.css` – Tailwind and custom design tokens.
 
-## Notes
-
-- Supabase tables such as `projects`, `project_files`, `project_likes`, `project_comments` and related views must exist and match the queries in the code.
-- This README is a general overview for development and assignment submission; update any details (course name, authors, deployment URL) to match your final project.
