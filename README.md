@@ -1,9 +1,16 @@
-# DT468 DDCT Showcase 
+# DT468 DDCT Showcase Website 💗
 
-**Authors:** [Your Name(s)]
-**Deployment URL:** [Link to your live site, if applicable]
+**Authors:** Pichamon Wiangsamur & Kantapich Panpein
 
-A portfolio showcase for the DDCT / DT468 course, built with React and Supabase. This application allows students to upload their projects (including media, files, and descriptions) and enables teachers/admins to browse, filter, and manage the submissions.
+**Deployment URL:** https://dt-468-ddct-showcase.vercel.app/
+
+**Video Presentation & Other File** https://drive.google.com/drive/folders/1BtIqaEzlHUJiing4vjUHkQDuuK3Dhd5Y?usp=drive_link
+
+```bash
+A portfolio showcase for the DDCT / DT468 course, built with React and Supabase.
+This application allows students to upload their projects (including media, files, and descriptions)
+and enables teachers/admins to browse, filter, and manage the submissions.
+```
 
 ## Tech Stack 💻
 
@@ -74,12 +81,10 @@ npm run dev
 The account has exceeded its monthly egress (outbound data) limit, which affects how quickly media and project files load.
 
 As a result:
-
-Images, videos, and project assets may load slowly
-
-Some files may fail to load during peak hours
-
-Real-time and storage operations might be temporarily throttled
-
-This issue is not related to the application code, but rather to the hosting limits of the current Supabase plan.
-The system performs normally when deployed on a Supabase instance with sufficient egress bandwidth.
+- Images, videos, and project assets may load slowly
+- Some files may fail to load during peak hours
+- Real-time and storage operations might be temporarily throttled
+```bash
+  This issue is not related to the application code, but rather to the hosting limits of the current Supabase plan.
+  The system performs normally when deployed on a Supabase instance with sufficient egress bandwidth.
+```
