@@ -20,6 +20,28 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+const getProjectRef = () => {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+  const match = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/i);
+  return match?.[1] || '';
+};
+
+const parseUsageBytes = (data: any, candidates: string[][]): number | null => {
+  for (const path of candidates) {
+    let current: any = data;
+    for (const key of path) {
+      if (current && typeof current === 'object' && key in current) {
+        current = current[key];
+      } else {
+        current = undefined;
+        break;
+      }
+    }
+    if (typeof current === 'number' && Number.isFinite(current)) return current;
+  }
+  return null;
+};
+
 // Helper function to verify user authentication
 async function getAuthenticatedUser(authHeader: string | null) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -561,6 +583,62 @@ app.get('/make-server-7d410c83/admin/analytics', async (c) => {
   } catch (error) {
     console.error('Error fetching analytics:', error);
     return c.json({ error: 'Failed to fetch analytics' }, 500);
+  }
+});
+
+app.get('/make-server-7d410c83/admin/usage', async (c) => {
+  const user = await getAuthenticatedUser(c.req.header('Authorization'));
+  if (!user || user.role !== 'admin') {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  try {
+    const projectRef = getProjectRef();
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!projectRef || !serviceKey) {
+      return c.json({ error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }, 500);
+    }
+
+    const now = new Date();
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const end = now.toISOString();
+    const url = `https://api.supabase.com/v1/projects/${projectRef}/usage?start=${start}&end=${end}`;
+
+    const resp = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: serviceKey,
+      },
+    });
+
+    if (!resp.ok) {
+      const message = await resp.text();
+      return c.json({ error: 'Failed to fetch usage', status: resp.status, message }, 500);
+    }
+
+    const data = await resp.json();
+    const databaseBytes = parseUsageBytes(data, [
+      ['db_size_bytes'],
+      ['database', 'size_bytes'],
+      ['database', 'bytes'],
+      ['database', 'total_bytes'],
+    ]);
+    const storageBytes = parseUsageBytes(data, [
+      ['storage_size_bytes'],
+      ['storage', 'size_bytes'],
+      ['storage', 'bytes'],
+      ['storage', 'total_bytes'],
+    ]);
+
+    return c.json({
+      range: { start, end },
+      databaseBytes,
+      storageBytes,
+      raw: data,
+    });
+  } catch (error) {
+    console.error('Error fetching usage:', error);
+    return c.json({ error: 'Failed to fetch usage' }, 500);
   }
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TabsContent } from '../ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -24,7 +24,10 @@ import {
   TrendingUp,
   Download,
   Eye,
+  Database,
+  HardDrive,
 } from 'lucide-react';
+import supabase from '../../utils/supabase/client';
 
 interface AnalyticsTabProps {
   projects: any[];
@@ -34,6 +37,13 @@ interface AnalyticsTabProps {
 export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
   const [studentYearFilter, setStudentYearFilter] = useState<string>('All');
   const [exporting, setExporting] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [supabaseUsage, setSupabaseUsage] = useState<{
+    databaseBytes: number | null;
+    storageBytes: number | null;
+    range?: { start: string; end: string };
+  } | null>(null);
 
   const totalProjects = projects.length;
   const totalStudents = users.filter((u) => u.role === 'student').length;
@@ -204,6 +214,59 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
       setExporting(false);
     }
   };
+
+  const formatBytes = (bytes: number | null | undefined) => {
+    if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return '—';
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, i);
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[i]}`;
+  };
+
+  useEffect(() => {
+    const fetchUsage = async () => {
+      setUsageLoading(true);
+      setUsageError(null);
+      try {
+        const envFunctionBase = (import.meta as any).env?.VITE_SUPABASE_FUNCTION_URL as string | undefined;
+        const clientUrl = (supabase as any)?.supabaseUrl as string | undefined;
+        const derivedFunctionBase = clientUrl ? clientUrl.replace('.supabase.co', '.functions.supabase.co') : undefined;
+        const functionBase = envFunctionBase || derivedFunctionBase;
+        if (!functionBase) {
+          throw new Error('Missing Supabase function URL');
+        }
+
+        const { data: session } = await supabase.auth.getSession();
+        const token = session?.session?.access_token;
+        const resp = await fetch(`${functionBase}/make-server-7d410c83/admin/usage`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!resp.ok) {
+          throw new Error(`Usage request failed (${resp.status})`);
+        }
+        const contentType = resp.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          throw new Error('Usage endpoint returned non-JSON (check function URL/config)');
+        }
+        const payload = await resp.json();
+        if (payload?.error) {
+          throw new Error(payload.error);
+        }
+        setSupabaseUsage({
+          databaseBytes: payload.databaseBytes ?? null,
+          storageBytes: payload.storageBytes ?? null,
+          range: payload.range,
+        });
+      } catch (err: any) {
+        setUsageError(err?.message || 'Failed to load Supabase usage');
+      } finally {
+        setUsageLoading(false);
+      }
+    };
+
+    fetchUsage();
+  }, []);
 
   return (
     <TabsContent value="analytics" className="space-y-6">
@@ -430,6 +493,43 @@ export function AnalyticsTab({ projects, users }: AnalyticsTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Supabase Usage (last 7 days)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {usageLoading && <p className="text-sm text-muted-foreground">Loading usage…</p>}
+          {!usageLoading && usageError && (
+            <p className="text-sm text-destructive">Usage unavailable: {usageError}</p>
+          )}
+          {!usageLoading && !usageError && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg border bg-muted/30 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Database size</p>
+                  <p className="text-xl font-semibold">
+                    {formatBytes(supabaseUsage?.databaseBytes ?? null)}
+                  </p>
+                </div>
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+              <div className="p-4 rounded-lg border bg-muted/30 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Storage used</p>
+                  <p className="text-xl font-semibold">
+                    {formatBytes(supabaseUsage?.storageBytes ?? null)}
+                  </p>
+                </div>
+                <HardDrive className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-3">
+            Values come from Supabase project usage (requires service role on the server function).
+          </p>
+        </CardContent>
+      </Card>
     </TabsContent>
   );
 }

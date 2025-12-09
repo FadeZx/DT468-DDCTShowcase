@@ -12,7 +12,7 @@ import { AccountSettings } from './components/Profile/AccountSettings';
 import { Toaster } from './components/ui/sonner';
 import { Input } from './components/ui/input';
 import { Search } from 'lucide-react';
-import { EventsPage } from './components/EventsPage';
+import { EventsHomePage } from './components/EventsHomePage';
 import { EventPage } from './components/EventPage';
 import { EventManagement } from './components/EventManagement';
 import supabase from './utils/supabase/client';
@@ -594,7 +594,18 @@ export default function App() {
   };
 
   // Auth helpers
-  const quickLoginEmails = { admin: 'admin@ddct.edu.th', student1: 'student1@ddct.edu.th', student2: 'student2@ddct.edu.th', partner: 'partner@ddct.edu.th' };
+  const quickLoginEmails = {
+    admin: 'admin@ddct.edu.th',
+    student1: 'student1@ddct.edu.th',
+    student2: 'student2@ddct.edu.th',
+    partner: 'partner@ddct.edu.th',
+  };
+  const quickLoginPasswords = {
+    admin: 'Admin#468',
+    student1: 'Student#468',
+    student2: 'Student#468',
+    partner: 'partner1234',
+  };
 
   const ALLOWED_PROFILE_ROLES = ['admin', 'student', 'guest'] as const;
   type AllowedProfileRole = (typeof ALLOWED_PROFILE_ROLES)[number];
@@ -802,13 +813,14 @@ export default function App() {
           </div>
         ) : (
           <>
-            <AuthDialog
-              isOpen={showAuth && !currentUser}
-              onClose={() => setShowAuth(false)}
-              onSignedIn={() => setShowAuth(false)}
-              signInWithEmail={signInWithEmail}
-              quickLoginEmails={quickLoginEmails}
-            />
+              <AuthDialog
+                isOpen={showAuth && !currentUser}
+                onClose={() => setShowAuth(false)}
+                onSignedIn={() => setShowAuth(false)}
+                signInWithEmail={signInWithEmail}
+                quickLoginEmails={quickLoginEmails}
+                quickLoginPasswords={quickLoginPasswords}
+              />
           <Routes>
               <Route path="/" element={
                 <HomePage
@@ -935,7 +947,7 @@ export default function App() {
               } />
               
               <Route path="/events" element={
-                <EventsPage onEventClick={handleEventClick} />
+                <EventsHomePage onEventClick={handleEventClick} />
               } />
               
               <Route path="/events/:eventId" element={

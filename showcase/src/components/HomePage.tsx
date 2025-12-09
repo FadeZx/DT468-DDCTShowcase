@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { ProjectCard } from './ProjectCard';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Calendar, Users, Trophy, ArrowRight } from 'lucide-react';
+import { Calendar, Users, Trophy, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SupabaseImage } from './figma/SupabaseImage';
 import { FallingSymbols } from './FallingSymbols';
 import { SteamLikeFeatured } from './SteamLikeFeatured';
@@ -36,6 +36,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
   const location = useLocation();
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [typedTitle, setTypedTitle] = useState('');
   const [hasAppliedSearchParams, setHasAppliedSearchParams] = useState(false);
   const browseSectionRef = useRef<HTMLDivElement | null>(null);
@@ -78,7 +79,27 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
     }
   });
 
-  const categories = Array.from(categoryMap.values());
+  const allCategories = Array.from(categoryMap.values());
+  const sortedCategories = allCategories
+    .filter((c) => c.id !== 'all')
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const topCategories = sortedCategories.slice(0, 4);
+  const overflowCategories = sortedCategories.slice(4);
+  const overflowCategoryIds = new Set(overflowCategories.map((c) => c.id));
+  const categories = [
+    categoryMap.get('all')!,
+    ...topCategories,
+    ...(overflowCategories.length
+      ? [{ id: 'other-categories', name: 'Others', count: overflowCategories.reduce((sum, c) => sum + c.count, 0) }]
+      : []),
+  ];
+
+  const projectMatchesCategory = (project: any, categoryId: string) => {
+    if (categoryId === 'all') return true;
+    const formattedCategory = formatCategoryId(project.category);
+    if (categoryId === 'other-categories') return overflowCategoryIds.has(formattedCategory);
+    return formattedCategory === categoryId;
+  };
 
   const normalizeTags = (p: any): string[] => {
     const t = p?.tags;
@@ -87,10 +108,16 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
     return [];
   };
 
-  // gather all tag suggestions from visible projects
+  // gather all tag suggestions from the projects visible in the selected category
   const allTagsSet = new Set<string>();
-  projects.forEach((p) => normalizeTags(p).forEach((t) => allTagsSet.add(t)));
+  projects
+    .filter((p) => projectMatchesCategory(p, selectedCategory))
+    .forEach((p) => normalizeTags(p).forEach((t) => allTagsSet.add(t)));
   const allTags = Array.from(allTagsSet).sort();
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, selectedTags]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -102,6 +129,8 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
         const categoryExists = categories.some((c) => c.id === categoryParam);
         if (categoryExists) {
           setSelectedCategory(categoryParam);
+        } else if (overflowCategoryIds.has(categoryParam)) {
+          setSelectedCategory('other-categories');
         }
       }
 
@@ -120,14 +149,36 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
     }
   }, [location.search, categories, allTags, hasAppliedSearchParams]);
 
-  const filteredProjects = (selectedTags.length === 0
-    ? (selectedCategory === 'all' ? projects : projects.filter(p => formatCategoryId(p.category) === selectedCategory))
-    : (selectedCategory === 'all' ? projects : projects.filter(p => formatCategoryId(p.category) === selectedCategory))
-        .filter(p => {
-          const tags = normalizeTags(p);
-          return selectedTags.every(t => tags.includes(t));
-        })
-  );
+  // Drop any selected tags that no longer exist in the current category
+  useEffect(() => {
+    if (selectedTags.length === 0) return;
+    const available = new Set(allTags);
+    const filtered = selectedTags.filter((t) => available.has(t));
+    if (filtered.length !== selectedTags.length) {
+      setSelectedTags(filtered);
+    }
+  }, [allTags, selectedTags]);
+
+  const filteredProjects = projects.filter((project) => {
+    const matchesCategory = (() => {
+      return projectMatchesCategory(project, selectedCategory);
+    })();
+
+    if (!matchesCategory) return false;
+    if (selectedTags.length === 0) return true;
+
+    const tags = normalizeTags(project);
+    return selectedTags.every((t) => tags.includes(t));
+  });
+
+  const pageSize = 20;
+  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedProjects = filteredProjects.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const upcomingEvents = [
     {
@@ -242,7 +293,7 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
 
             <TabsContent value={selectedCategory}>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-4 gap-4">
-                {filteredProjects.slice(0, 12).map((project) => (
+                {paginatedProjects.map((project) => (
                   <ProjectCard
                     key={project.id}
                     project={project}
@@ -254,10 +305,30 @@ export function HomePage({ projects, onProjectClick }: HomePageProps) {
                 <div className="text-center py-10 text-muted-foreground">No projects in this filter.</div>
               )}
               
-              {filteredProjects.length > 12 && (
-                <div className="text-center mt-8">
-                  <Button variant="outline" size="lg">
-                    Load More Projects
+              {filteredProjects.length > 0 && (
+                <div className="flex items-center justify-center gap-3 mt-8">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={safePage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {safePage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    disabled={safePage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               )}

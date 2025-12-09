@@ -13,9 +13,10 @@ interface AuthDialogProps {
   onSignedIn: (profile: any) => void;
   signInWithEmail: (email: string, password: string) => Promise<any>;
   quickLoginEmails: { admin: string; student1: string; student2: string; partner: string };
+  quickLoginPasswords: { admin: string; student1: string; student2: string; partner: string };
 }
 
-export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quickLoginEmails }: AuthDialogProps) {
+export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quickLoginEmails, quickLoginPasswords }: AuthDialogProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,8 +43,13 @@ export function AuthDialog({ isOpen, onClose, onSignedIn, signInWithEmail, quick
     setLoading(true);
     setError('');
     try {
-      // Default seed passwords we will create with the seed script
-      const pwd = role === 'admin' ? 'Admin#468' : role === 'partner' ? 'Partner#468' : 'Student#468';
+      // Prefer configured password; fallback to seeded defaults
+      const pwd = quickLoginPasswords?.[role] ||
+        (role === 'admin'
+          ? 'Admin#468'
+          : role === 'partner'
+            ? 'Partner#468'
+            : 'Student#468');
       const emailToUse = quickLoginEmails[role];
       const profile = await signInWithEmail(emailToUse, pwd);
       onSignedIn(profile);

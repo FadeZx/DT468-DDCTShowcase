@@ -48,7 +48,7 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
           </Link>
           
           <nav className="flex items-center gap-6">
-            <Link to="/">
+            <Link to="/events">
               <Button 
                 variant="ghost" 
                 className="hover:text-orange-500 transition-colors duration-200"
@@ -56,7 +56,6 @@ export function Header({ currentUser, onLogin, onLogout }: HeaderProps) {
                 Events
               </Button>
             </Link>
-          
           </nav>
         </div>
 

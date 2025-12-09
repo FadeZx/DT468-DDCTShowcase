@@ -184,7 +184,8 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
           skills: [] as string[],
         };
 
-        const { error: profileError } = await supabase
+        // Insert profile with service role client to bypass RLS restrictions
+        const { error: profileError } = await adminClient
           .from('profiles')
           .insert(profileRow);
 
@@ -289,7 +290,7 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
       name: user.name || '',
       email: user.email || '',
       role,
-      year: user.year || '68',
+      year: role === 'student' ? (user.year || '68') : '',
     });
     setNewPassword('');
   };
@@ -531,6 +532,45 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                 />
               </div>
               
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-2">Role *</label>
+                <select
+                  value={createFormData.role}
+                  onChange={(e) =>
+                    setCreateFormData(prev => ({
+                      ...prev,
+                      role: e.target.value as any,
+                      year: e.target.value === 'student' ? (prev.year || '68') : '',
+                    }))
+                  }
+                  className="w-full px-3 py-2 border rounded-md bg-background"
+                  disabled={loading}
+                >
+                  <option value="student">Student</option>
+                  <option value="partner">Partner</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {createFormData.role === 'student' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Year</label>
+                  <select
+                    value={createFormData.year}
+                    onChange={(e) => setCreateFormData(prev => ({ ...prev, year: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md bg-background"
+                    disabled={loading}
+                  >
+                    <option value="68">68</option>
+                    <option value="67">67</option>
+                    <option value="66">66</option>
+                    <option value="65">65</option>
+                    <option value="64">64</option>
+                    <option value="63">63</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium mb-2">Password *</label>
                 <div className="flex gap-2">
@@ -550,39 +590,6 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                     Generate
                   </Button>
                 </div>
-              </div>
-              
-              {createFormData.role === 'student' && (
-                <div>
-                  <label className="block text-sm font-medium mb-2">Year</label>
-                  <select
-                    value={createFormData.year}
-                    onChange={(e) => setCreateFormData(prev => ({ ...prev, year: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md bg-background"
-                    disabled={loading}
-                  >
-                    <option value="68">68</option>
-                    <option value="67">67</option>
-                    <option value="66">66</option>
-                    <option value="65">65</option>
-                    <option value="64">64</option>
-                    <option value="63">63</option>
-                  </select>
-                </div>
-              )}
-              
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-2">Role *</label>
-                <select
-                  value={createFormData.role}
-                  onChange={(e) => setCreateFormData(prev => ({ ...prev, role: e.target.value as any }))}
-                  className="w-full px-3 py-2 border rounded-md bg-background"
-                  disabled={loading}
-                >
-                  <option value="student">Student</option>
-                  <option value="partner">Partner</option>
-                  <option value="admin">Admin</option>
-                </select>
               </div>
             </div>
             
@@ -716,7 +723,11 @@ export function AccountManagement({ onAccountCreated }: AccountManagementProps) 
                         <select
                           value={editForm.role}
                           onChange={e =>
-                            setEditForm(prev => ({ ...prev, role: e.target.value as any }))
+                            setEditForm(prev => ({
+                              ...prev,
+                              role: e.target.value as any,
+                              year: e.target.value === 'student' ? (prev.year || '68') : '',
+                            }))
                           }
                           className="w-full px-3 py-2 border rounded-md bg-background"
                           disabled={savingUser}
